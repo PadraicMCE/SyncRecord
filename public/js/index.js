@@ -1,7 +1,26 @@
+// TODO: Add recordings saved from each recording session. Naming?? DateTime and array token?
+//       Socket id static for each user.
+// NOTE: Recording PCM for positioning  - use AudioWorklet.
+//       Recording final audio to .wav - use MediaRecorder. Possibly convert from AudioWorklet raw data.
+
+import * as THREE from "three";
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+
+//Font for text in scene
+const fontLoader = new FontLoader();
+//Lines
+var points = [];
+// Socketio
 const socket = io();
+
+// **************************************
+// ************ Variables *************** //
+// **************************************
 const width = screen.availWidth;
 const height = screen.availHeight;
-
 //Flag for debug printing
 var debugprint = true;
 //Room token to allow communication with other devices in the session
@@ -12,8 +31,9 @@ var deviceInArray;
 // Tracking number of connected client devices.
 var numDevices = 0;
 var connectedDeviceIds = [];
+
 // **************************************
-// ************** Looks ***************** //
+// ************ Interface *************** //
 // **************************************
 // User interface
 var noticeDiv = document.getElementById('div');
@@ -85,6 +105,30 @@ joinRoomButton.onclick = function()
     roomToken = sessionToken;
     socket.emit('joinRoom',roomToken);
 }
+
+if(master)
+{
+    // Button to run positioning calibration clicked
+    RunCalibButton.onclick = function()
+    {
+
+    }
+    // Button to start recording clicked
+    StartRecordButton.onclick = function()
+    {
+
+    }
+    // Button to stop recording clicked
+    StopRecordButton.onclick = function()
+    {
+
+    }
+}
+
+// **************************************
+// *********** Communications *********** //
+// **************************************
+
 // If a device joins the session (array), the master logs it's id.
 // The master device assigns it a number. Ascending in order of joining.
 socket.on('joinedRoom', function(message)
@@ -110,6 +154,40 @@ socket.on('DevNumAssigned', message =>
     DeviceInArrayDiv.innerHTML = "Device number assigned: "+message;
     deviceInArray = message;
 });
+
+// **************************************
+// ************** WEBGL ***************** //
+// **************************************
+// 3D Scene
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xbbbbbb); // Optional, black is default
+// Renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth*0.75, window.innerHeight*0.75);
+// Set up lights
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight)
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+dirLight.position.set(10, 20, 0); // x, y, z
+scene.add(dirLight);
+// Camera
+const camera = new THREE.OrthographicCamera(
+  width / -2, // left
+  width / 2, // right
+  height / 2, // top
+  height / -2, // bottom
+  1, // near
+  100 // far
+);
+camera.position.set(1, 1, 1);
+camera.lookAt(0, 0, 0);
+const controls = new OrbitControls( camera, renderer.domElement );
+const loader = new GLTFLoader();
+// Add it to HTML
+document.body.appendChild(renderer.domElement);
+renderer.render(scene, camera);
+animate();
+
 
 // **************************************
 // ************* Functions ************** //
@@ -155,4 +233,33 @@ function createAudioControls()
     controlsDiv.appendChild(StartRecordButton);
     controlsDiv.appendChild(StopRecordButton);
     document.body.appendChild(controlsDiv);
+}
+// Function called to create the recording status of local device.
+// Add master sees recording status of all devices?
+function createRecordingStatus()
+{
+
+}
+// WebGL Animation
+function animate() {
+    requestAnimationFrame(animate)
+    //cube.rotation.x += 0.005
+    //cube.rotation.y += 0.01
+    controls.update()
+    renderer.render(scene, camera)
+ }
+ // Window resizing
+ window.addEventListener('resize', function()
+	{
+	var width = window.innerWidth;
+	var height = window.innerHeight;
+	renderer.setSize( width*0.75, height*0.75);
+	camera.aspect = width / height;
+	camera.updateProjectionMatrix();
+	} );
+function onWindowResize() {
+  windowHalfX = window.innerWidth / 2;
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize( window.innerWidth*0.75, window.innerHeight*0.75 );
 }

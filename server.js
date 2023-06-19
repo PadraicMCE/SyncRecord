@@ -72,44 +72,12 @@ app.post('/uploadAudio', upload.single('audio'), (req,res) => {
 //Run when client connects
 io.on('connection', socket => {
     socket.emit('message', 'Welcome to server');
-
-	//Poll devices to determine which ones are connected
-	//pollDevices();
-
-	socket.on('uploadAudio', function(message) {
-		var writer = fs.createWriteStream(path.resolve(__dirname,'./tmp/'+message.numOfDevices+'/'+message.name),{encoding:'binary'});
-		writer.write(message.data);
-		writer.end();
-		console.log('Finished receiving audio file');
-	})
-
-
 	
     socket.on('userConnected', data =>
     {
         console.log('User '+data+' connected');
         socket.emit('userConnected',data);
         socket.broadcast.emit('userConnected',data);
-        if(data == 1)
-        {
-            device1 = true;
-        }
-        if(data == 2)
-        {
-            device2 = true;
-        }
-        if(data == 3)
-        {
-            device3 = true;
-        }
-        if(data == 4)
-        {
-            device4 = true;
-		}
-		if(data == "M")
-		{
-			emitterDevice = true;
-		}
 	});
 
     //Sending audio data between devices
@@ -119,156 +87,39 @@ io.on('connection', socket => {
         console.log("Broadcast new media");
     });
 
-    //Tell devices to start recording
-    socket.on('recordStart', function(message)
-    {
-		socket.broadcast.emit('recordStart',{
-			data: message.data
-		});
-        //socket.broadcast.emit('recordStart',data);
-        //console.log("Audio");
-	});
-
-	socket.on('recordingStarted', function(message)
-	{
-		if(message.device == '1')
-		{ 
-			device1Recording = true;
-			console.log('Device 1 started recording');
-			if(device2Recording)
-			{
-				console.log('emitting Distance start command');
-				socket.broadcast.emit('Distance',{
-					numDevices: '2',
-					device: '1',
-					command: 'start'
-				});
-			}
-		}
-		if(message.device == '2')
-		{ 
-			device2Recording = true;
-			console.log('Device 2 started recording');
-			if(device1Recording)
-			{
-				console.log('emitting Distance start command');
-				socket.broadcast.emit('Distance',{
-					numDevices: '2',
-					device: '1',
-					command: 'start'
-				});
-			}
-		}
-		/*
-		socket.broadcast.emit('recordingStarted',{
-			device: message.device,
-			recording: message.recording
-		});
-		*/
-	});
-	
-	socket.on('recordStop', function(message)
-	{
-		socket.broadcast.emit('recordStop',{
-			data: message.data
-		});
-	});
-
-    //Device number determined by password entered (Master / Slave)
-    socket.on('password', data =>
-    {
-        socket.emit('device', data);
-    });
-
     //Runs when a client disconnects
     socket.on('disconnect', () => {
         console.log('A client has disconnected');
 		//pollDevices();
 	});
-	
-	socket.on('Distance', function(message)
-    {
-		console.log('Distance command received, device: '+message.device);
-		if(message.device == '1')
-		{
-			if(message.command == 'start')
-			{
-				console.log('Sending distance command, device 1');
-				socket.broadcast.emit('Distance',{
-					numDevices: '2',
-					device: '1',
-					command: 'start'
-				});
-			}
-			if(message.command == 'finished')
-			{
-				setTimeout(function()
-				{
-					console.log('Sending distance command, device 2');
-					socket.broadcast.emit('Distance',{
-						numDevices: '2',
-						device: '2',
-						command: 'start'
-					});
-				},100);
-			}
-		}
-		if(message.device == '2')
-		{
-			
-			if(message.command == 'finished')
-			{
-				setTimeout(function()
-				{
-					socket.broadcast.emit('recordStop',{
-						numDevices: '2',
-						device: '2',
-						command: 'stop'
-					});
-				},200);
-			}
-		}
-	});
 
-	socket.on('recordingStopped', function(message)
+	socket.on('joinRoom', (room) =>
 	{
-		if(message.device == '1')
-		{
-			device1Recording = false;
-			console.log('device 1 finished recording');
-		} 
-		if(message.device == '2')
-		{
-			device2Recording = false;
-			console.log('device 2 finished recording');
-		}
-	});
-
-	socket.on('NumberOfDevices', data =>
-	{
-		io.emit('NumberOfDevices',data);
-		//Debugging
-		console.log('Number of devices command relayed: '+data);
-		numberOfDevices = data;
-	});
-
-	socket.on('writeToTextFile',function(message)
-	{
-		fs.appendFile('\nBatteryTest.txt','Time:'+message.time+'  Percentage: '+message.percentage, function(err)
-		{
-			if(err) throw err;
-			console.log('File appended, time: '+message.time+'  precentage: '+message.percentage);
+		socket.join(room);
+		var id = socket.id;
+		console.log(id);
+		io.to(room).emit('joinedRoom',{
+			id: id
 		});
+
+	});
+
+	socket.on('assignDevice', function(message)
+	{
+		console.log(message.id);
+		io.to(message.id).emit('DevNumAssigned',message.device);
 	});
 
 });
 
-function emitting(msg,data1)
-{
-	io.emit(msg,{
-		data: data1
-	});
-}
+io.of("/").adapter.on("create-room", (room) => {
+	console.log(`room ${room} was created`);
+});
+
+io.of("/").adapter.on("join-room", (room, id) => {
+	console.log(`socket ${id} has joined room ${room}`);
+});
+
 
 
 server.listen(PORT);

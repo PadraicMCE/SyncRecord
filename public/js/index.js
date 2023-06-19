@@ -6,7 +6,14 @@ const height = screen.availHeight;
 var debugprint = true;
 //Room token to allow communication with other devices in the session
 var roomToken;
-
+// Determine if master device
+var master;
+// Tracking number of connected client devices.
+var numDevices = 0;
+var connectedDeviceIds = [];
+// **************************************
+// ************** Looks ***************** //
+// **************************************
 // User interface
 var noticeDiv = document.getElementById('div');
 noticeDiv.innerHTML += '<p style="color:white;font-size:40px;">Socket Room Test</p>';
@@ -50,15 +57,44 @@ createRoomButton.onclick = function()
     console.log(token);
     createSessionTokenDiv.innerHTML = "Session Token: "+token;
     roomToken = token;
+    master = true;
+    socket.emit('joinRoom',roomToken);
 }
 
 joinRoomButton.onclick = function()
 {
     // Prompt the user for input and store it in a variable
+    master = false;
     const sessionToken = prompt('Enter session token:');
     createSessionTokenDiv.innerHTML = "Session Token: "+sessionToken;
     roomToken = sessionToken;
+    socket.emit('joinRoom',roomToken);
 }
+
+
+socket.on('joinedRoom', function(message)
+{
+    if(master==true)
+    {
+        //Poll connected devices to check a device is not reconnecting?
+        console.log(message.id);
+        connectedDeviceIds.push(message.id);
+        console.log(connectedDeviceIds);
+        numDevices = numDevices + 1;
+        console.log(numDevices);
+        socket.emit('assignDevice', {
+            device: numDevices,
+            id: message.id,
+            room: roomToken
+        });
+    }
+});
+
+
+socket.on('DevNumAssigned', message =>
+{
+    console.log(message);
+});
 
 const rand = () => {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -69,3 +105,4 @@ const rand = () => {
     }
     return token;
   };
+  

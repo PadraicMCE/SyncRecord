@@ -56,7 +56,12 @@ io.on('connection', socket => {
 	{
 		console.log(message.id);
 		io.to(message.id).emit('DevNumAssigned',message.device);
+        io.to(message.room).emit('Number of Devices',{
+            device: message.device
+        });
 	});
+
+
 
 });
 

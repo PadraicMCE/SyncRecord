@@ -22,7 +22,7 @@ const socket = io();
 const width = screen.availWidth;
 const height = screen.availHeight;
 //Flag for debug printing
-var debugprint = true;
+var debugprint = false;
 //Room token to allow communication with other devices in the session
 var roomToken;
 // Determine if master device
@@ -154,16 +154,38 @@ socket.on('DevNumAssigned', message =>
     DeviceInArrayDiv.innerHTML = "Device number assigned: "+message;
     deviceInArray = message;
 });
-
+socket.on('Number of Devices', function(message)
+{
+    if(!master)
+    {
+        numDevices = message.device;
+    }
+    checkDeviceRender();
+});
 // **************************************
 // ************** WEBGL ***************** //
 // **************************************
 // 3D Scene
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xbbbbbb); // Optional, black is default
-// Renderer
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth*0.75, window.innerHeight*0.75);
+// Phone cuboid dimensions
+const phoneGeometry = new THREE.BoxGeometry(0.1, 0.0025, 0.05); // width, height, depth
+const phoneMaterial1 = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+const phoneMaterial2 = new THREE.MeshLambertMaterial({ color: 0x0000ff });
+const phoneMaterial3 = new THREE.MeshLambertMaterial({ color: 0x00ff00 });
+const phoneMesh1 = new THREE.Mesh(phoneGeometry, phoneMaterial1);
+const phoneMesh2 = new THREE.Mesh(phoneGeometry, phoneMaterial2);
+const phoneMesh3 = new THREE.Mesh(phoneGeometry, phoneMaterial3);
+const linematerial = new THREE.LineBasicMaterial( { color: 0x000000 } );
+
+// Start positions on devices
+phoneMesh1.position.set(0, 0, 0); // Optional, 0,0,0 is the default
+phoneMesh2.position.set(0.5, 0, 0); // Optional, 0,0,0 is the default
+phoneMesh3.position.set(1, 0, 0); // Optional, 0,0,0 is the default
+
+scene.add(phoneMesh1);
+scene.add(phoneMesh2);
+
 // Set up lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight)
@@ -171,23 +193,38 @@ const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
 dirLight.position.set(10, 20, 0); // x, y, z
 scene.add(dirLight);
 // Camera
+const camwidth = 10;
+const camheight = width * (window.innerHeight / window.innerWidth);
 const camera = new THREE.OrthographicCamera(
-  width / -2, // left
-  width / 2, // right
-  height / 2, // top
-  height / -2, // bottom
+  camwidth / -2, // left
+  camwidth / 2, // right
+  camheight / 2, // top
+  camheight / -2, // bottom
   1, // near
   100 // far
 );
 camera.position.set(1, 1, 1);
 camera.lookAt(0, 0, 0);
+
+// Renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth*0.75, window.innerHeight*0.75);
+
 const controls = new OrbitControls( camera, renderer.domElement );
 const loader = new GLTFLoader();
+
+// WebGL Animation
+function animate() 
+{
+    requestAnimationFrame(animate)
+    controls.update()
+    renderer.render(scene, camera)
+ }
+
 // Add it to HTML
 document.body.appendChild(renderer.domElement);
 renderer.render(scene, camera);
 animate();
-
 
 // **************************************
 // ************* Functions ************** //
@@ -240,26 +277,29 @@ function createRecordingStatus()
 {
 
 }
-// WebGL Animation
-function animate() {
-    requestAnimationFrame(animate)
-    //cube.rotation.x += 0.005
-    //cube.rotation.y += 0.01
-    controls.update()
-    renderer.render(scene, camera)
- }
  // Window resizing
  window.addEventListener('resize', function()
-	{
+{
 	var width = window.innerWidth;
 	var height = window.innerHeight;
 	renderer.setSize( width*0.75, height*0.75);
 	camera.aspect = width / height;
 	camera.updateProjectionMatrix();
-	} );
-function onWindowResize() {
-  windowHalfX = window.innerWidth / 2;
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize( window.innerWidth*0.75, window.innerHeight*0.75 );
+});
+// Render in extra devices
+function checkDeviceRender()
+{
+    if(numDevices >= 1)
+    {
+        scene.add(phoneMesh1);
+    }
+    if(numDevices >= 2) 
+    {
+        scene.add(phoneMesh2);
+    }
+    if(numDevices >= 3)
+    {
+        scene.add(phoneMesh3);
+    }
+    animate();
 }

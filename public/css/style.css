@@ -1,0 +1,19 @@
+
+
+h1 {
+    color: dimgray;
+    text-align: center;
+    background-color: ivory;
+}
+
+button {
+    border-radius: 20px;
+    font-size: 16px;
+    text-align: center;
+    padding: 20px 20px;
+}
+
+body {
+    text-align: center;
+    background-color: ivory;
+}

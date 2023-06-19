@@ -120,8 +120,6 @@ io.of("/").adapter.on("join-room", (room, id) => {
 	console.log(`socket ${id} has joined room ${room}`);
 });
 
-
-
 server.listen(PORT);
 console.log(`Server running on ${PORT}`);
 //Notification on server.

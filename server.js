@@ -61,6 +61,10 @@ io.on('connection', socket => {
         });
 	});
 
+	socket.on('deviceIds', function(message)
+	{
+		socket.to(message.room).emit('deviceIds',message.ids);
+	});
 
 
 });

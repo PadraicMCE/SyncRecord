@@ -5,6 +5,7 @@
 
 import * as THREE from "three";
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 import { FontLoader } from 'three/addons/loaders/FontLoader.js';
@@ -31,6 +32,7 @@ var deviceInArray;
 // Tracking number of connected client devices.
 var numDevices = 0;
 var connectedDeviceIds = [];
+var localDeviceColour;
 
 // **************************************
 // ************ Interface *************** //
@@ -70,15 +72,75 @@ createRoomDiv.appendChild(createSessionTokenDiv);
 document.body.appendChild(joinRoomDiv);
 document.body.appendChild(DeviceInArrayDiv);
 
+// **************************************
+// ************** WEBGL ***************** //
+// **************************************
+// 3D Scene
+const scene = new THREE.Scene();
+// Camera
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.5, 100);
+camera.position.set(1, 1, 1);
+camera.lookAt(0, 0, 0);
+// Renderer
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setClearColor("#233143");
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Responsive to window size changes
+window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+});
+// Create Box
+const phoneGeometry = new THREE.BoxGeometry(0.1, 0.0025, 0.05);
+const phoneMaterial1 = new THREE.MeshLambertMaterial({color: 0xff0000});
+const phoneMaterial2 = new THREE.MeshLambertMaterial({color: 0x0000ff});
+const phoneMaterial3 = new THREE.MeshLambertMaterial({color: 0x00ff00});
+const phoneMesh1 = new THREE.Mesh(phoneGeometry, phoneMaterial1);
+const phoneMesh2 = new THREE.Mesh(phoneGeometry, phoneMaterial2);
+const phoneMesh3 = new THREE.Mesh(phoneGeometry, phoneMaterial3);
+/*
+scene.add(phoneMesh1);
+scene.add(phoneMesh2);
+scene.add(phoneMesh3);
+phoneMesh1.position.set(0, 0, 0); // Optional, 0,0,0 is the default
+phoneMesh2.position.set(0.5, 0, 0); // Optional, 0,0,0 is the default
+phoneMesh3.position.set(1, 0, 0); // Optional, 0,0,0 is the default
+*/
+// Light
+const light = new THREE.PointLight(0xFFFFFF, 1, 100);
+light.position.set(5, 5, 5);
+scene.add(light);
+// Set up ambient lights
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight)
+//Trackball Controls for Camera 
+const controls = new OrbitControls( camera, renderer.domElement );
+//const controls = new TrackballControls(camera, renderer.domElement); 
+controls.rotateSpeed = 4;
+controls.dynamicDampingFactor = 0.15;
+// function
+const rendering = function() {
+    requestAnimationFrame(rendering);    // Constantly rotate box
+    //scene.rotation.z -= 0.005;
+    //scene.rotation.x -= 0.01;    
+    renderer.render(scene, camera);
+    // Update trackball controls
+    controls.update();
+}
+rendering();
+
+// **************************************
+// ************** Controls ************** //
+// **************************************
+
 // Controls only for master device
 var controlsDiv;
 var RunCalibButton; 
 var StartRecordButton;
 var StopRecordButton;
-
-// **************************************
-// ************** Controls ************** //
-// **************************************
 
 // Create room clicked (device assigned as master of that array)
 // A random token is created.
@@ -138,12 +200,16 @@ socket.on('joinedRoom', function(message)
         //Poll connected devices to check a device is not reconnecting?
         if(debugprint) console.log(message.id);
         connectedDeviceIds.push(message.id);
-        if(debugprint) console.log(connectedDeviceIds);
+        console.log(connectedDeviceIds);
         numDevices = numDevices + 1;
         if(debugprint) console.log(numDevices);
         socket.emit('assignDevice', {
             device: numDevices,
             id: message.id,
+            room: roomToken
+        });
+        socket.emit('deviceIds', {
+            ids: connectedDeviceIds,
             room: roomToken
         });
     }
@@ -162,69 +228,14 @@ socket.on('Number of Devices', function(message)
     }
     checkDeviceRender();
 });
-// **************************************
-// ************** WEBGL ***************** //
-// **************************************
-// 3D Scene
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xbbbbbb); // Optional, black is default
-// Phone cuboid dimensions
-const phoneGeometry = new THREE.BoxGeometry(0.1, 0.0025, 0.05); // width, height, depth
-const phoneMaterial1 = new THREE.MeshLambertMaterial({ color: 0xff0000 });
-const phoneMaterial2 = new THREE.MeshLambertMaterial({ color: 0x0000ff });
-const phoneMaterial3 = new THREE.MeshLambertMaterial({ color: 0x00ff00 });
-const phoneMesh1 = new THREE.Mesh(phoneGeometry, phoneMaterial1);
-const phoneMesh2 = new THREE.Mesh(phoneGeometry, phoneMaterial2);
-const phoneMesh3 = new THREE.Mesh(phoneGeometry, phoneMaterial3);
-const linematerial = new THREE.LineBasicMaterial( { color: 0x000000 } );
-
-// Start positions on devices
-phoneMesh1.position.set(0, 0, 0); // Optional, 0,0,0 is the default
-phoneMesh2.position.set(0.5, 0, 0); // Optional, 0,0,0 is the default
-phoneMesh3.position.set(1, 0, 0); // Optional, 0,0,0 is the default
-
-scene.add(phoneMesh1);
-scene.add(phoneMesh2);
-
-// Set up lights
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-scene.add(ambientLight)
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
-dirLight.position.set(10, 20, 0); // x, y, z
-scene.add(dirLight);
-// Camera
-const camwidth = 10;
-const camheight = width * (window.innerHeight / window.innerWidth);
-const camera = new THREE.OrthographicCamera(
-  camwidth / -2, // left
-  camwidth / 2, // right
-  camheight / 2, // top
-  camheight / -2, // bottom
-  1, // near
-  100 // far
-);
-camera.position.set(1, 1, 1);
-camera.lookAt(0, 0, 0);
-
-// Renderer
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth*0.75, window.innerHeight*0.75);
-
-const controls = new OrbitControls( camera, renderer.domElement );
-const loader = new GLTFLoader();
-
-// WebGL Animation
-function animate() 
+socket.on('deviceIds', ids =>
 {
-    requestAnimationFrame(animate)
-    controls.update()
-    renderer.render(scene, camera)
- }
-
-// Add it to HTML
-document.body.appendChild(renderer.domElement);
-renderer.render(scene, camera);
-animate();
+    if(!master)
+    {
+        connectedDeviceIds = ids;
+        console.log(connectedDeviceIds);
+    }
+});
 
 // **************************************
 // ************* Functions ************** //
@@ -291,15 +302,59 @@ function checkDeviceRender()
 {
     if(numDevices >= 1)
     {
-        scene.add(phoneMesh1);
+        // Remove timeout later
+        setTimeout(function()
+        {	
+            //Generate colour hex from id
+            var colourHex = stringToHex(connectedDeviceIds[0]);
+            colourHex = colourHex.substring(0, 6);
+            colourHex = '0x'+colourHex;
+            //console.log(colourHex);
+            //console.log(typeof colourHex);
+            phoneMesh1.material.color.setHex(colourHex);
+            scene.add(phoneMesh1);
+            phoneMesh1.position.set(0, 0, 0);
+        },100);
     }
     if(numDevices >= 2) 
     {
-        scene.add(phoneMesh2);
+        // Remove timeout later
+        setTimeout(function()
+        {	
+            //Generate colour hex from id
+            var colourHex = stringToHex(connectedDeviceIds[1]);
+            colourHex = colourHex.substring(0, 6);
+            colourHex = '0x'+colourHex;
+            phoneMesh2.material.color.setHex(colourHex);
+            scene.add(phoneMesh2);
+            phoneMesh2.position.set(0.5, 0, 0);
+        },100);
     }
     if(numDevices >= 3)
     {
-        scene.add(phoneMesh3);
+        // Remove timeout later
+        setTimeout(function()
+        {	
+            //Generate colour hex from id
+            var colourHex = stringToHex(connectedDeviceIds[2]);
+            colourHex = colourHex.substring(0, 6);
+            colourHex = '0x'+colourHex;
+            phoneMesh3.material.color.setHex(colourHex);
+            scene.add(phoneMesh3);
+            phoneMesh3.position.set(1, 0, 0);
+        },100);
     }
-    animate();
+    rendering();
 }
+// Function that converts a string to hex
+const stringToHex = (str) => {
+    let hex = '';
+    for (let i = 0; i < str.length; i++) {
+      const charCode = str.charCodeAt(i);
+      const hexValue = charCode.toString(16);
+        
+      // Pad with zeros to ensure two-digit representation
+      hex += hexValue.padStart(2, '0');
+    }
+    return hex;
+  };

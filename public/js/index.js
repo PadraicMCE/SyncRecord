@@ -78,7 +78,7 @@ document.body.appendChild(DeviceInArrayDiv);
 // 3D Scene
 const scene = new THREE.Scene();
 // Camera
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.5, 100);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(1, 1, 1);
 camera.lookAt(0, 0, 0);
 // Renderer
@@ -94,13 +94,15 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
 });
 // Create Box
-const phoneGeometry = new THREE.BoxGeometry(0.1, 0.0025, 0.05);
-const phoneMaterial1 = new THREE.MeshLambertMaterial({color: 0xff0000});
-const phoneMaterial2 = new THREE.MeshLambertMaterial({color: 0x0000ff});
-const phoneMaterial3 = new THREE.MeshLambertMaterial({color: 0x00ff00});
+const phoneGeometry = new THREE.BoxGeometry(0.1, 0.05, 0.0025);
+var phoneMaterial1 = new THREE.MeshLambertMaterial({color: 0x000000});
+var phoneMaterial2 = new THREE.MeshLambertMaterial({color: 0x000000});
+var phoneMaterial3 = new THREE.MeshLambertMaterial({color: 0x000000});
+var phoneMaterial4 = new THREE.MeshLambertMaterial({color: 0x000000});
 const phoneMesh1 = new THREE.Mesh(phoneGeometry, phoneMaterial1);
 const phoneMesh2 = new THREE.Mesh(phoneGeometry, phoneMaterial2);
 const phoneMesh3 = new THREE.Mesh(phoneGeometry, phoneMaterial3);
+const phoneMesh4 = new THREE.Mesh(phoneGeometry, phoneMaterial4);
 /*
 scene.add(phoneMesh1);
 scene.add(phoneMesh2);
@@ -117,8 +119,8 @@ scene.add(light);
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight)
 //Trackball Controls for Camera 
-const controls = new OrbitControls( camera, renderer.domElement );
-//const controls = new TrackballControls(camera, renderer.domElement); 
+//const controls = new OrbitControls( camera, renderer.domElement );
+const controls = new TrackballControls(camera, renderer.domElement); 
 controls.rotateSpeed = 4;
 controls.dynamicDampingFactor = 0.15;
 // function
@@ -308,12 +310,39 @@ function checkDeviceRender()
             //Generate colour hex from id
             var colourHex = stringToHex(connectedDeviceIds[0]);
             colourHex = colourHex.substring(0, 6);
-            colourHex = '0x'+colourHex;
+            colourHex = '0x'+colourHex; 
             //console.log(colourHex);
             //console.log(typeof colourHex);
             phoneMesh1.material.color.setHex(colourHex);
             scene.add(phoneMesh1);
             phoneMesh1.position.set(0, 0, 0);
+            // Device text
+            fontLoader.load(
+                // path to the font (included in three)
+                '/three.js-master/examples/fonts/droid/droid_serif_regular.typeface.json',
+                // called when the font has loaded
+                function (droidFont) {
+                const settings = {
+                    size: 0.01,
+                    height: 0.0008,
+                    font: droidFont,
+                }
+                const textGeometry = new TextGeometry('Device 1', settings);
+                const textMaterial = new THREE.MeshBasicMaterial();
+                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+                textMesh.position.x = 0.05;
+                //textMesh.rotateX(-Math.PI / 2);
+                scene.add(textMesh);
+                }, 
+                // called when the font is loading
+                function (xhr) {
+                console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
+                },
+                // called when there is an error loading the font
+                function (error) {
+                console.log(error);
+                }
+            );
         },100);
     }
     if(numDevices >= 2) 
@@ -327,7 +356,35 @@ function checkDeviceRender()
             colourHex = '0x'+colourHex;
             phoneMesh2.material.color.setHex(colourHex);
             scene.add(phoneMesh2);
-            phoneMesh2.position.set(0.5, 0, 0);
+            phoneMesh2.position.set(0, 0.06, 0);
+            // Device text
+            fontLoader.load(
+                // path to the font (included in three)
+                '/three.js-master/examples/fonts/droid/droid_serif_regular.typeface.json',
+                // called when the font has loaded
+                function (droidFont) {
+                const settings = {
+                    size: 0.01,
+                    height: 0.0008,
+                    font: droidFont,
+                }
+                const textGeometry = new TextGeometry('Device 2', settings);
+                const textMaterial = new THREE.MeshBasicMaterial();
+                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+                textMesh.position.x = 0.05;
+                textMesh.position.y = 0.06;
+                //textMesh.rotateX(-Math.PI / 2);
+                scene.add(textMesh);
+                }, 
+                // called when the font is loading
+                function (xhr) {
+                console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
+                },
+                // called when there is an error loading the font
+                function (error) {
+                console.log(error);
+                }
+            );
         },100);
     }
     if(numDevices >= 3)
@@ -341,7 +398,77 @@ function checkDeviceRender()
             colourHex = '0x'+colourHex;
             phoneMesh3.material.color.setHex(colourHex);
             scene.add(phoneMesh3);
-            phoneMesh3.position.set(1, 0, 0);
+            phoneMesh3.position.set(0, 0.12, 0);
+            // Device text
+            fontLoader.load(
+                // path to the font (included in three)
+                '/three.js-master/examples/fonts/droid/droid_serif_regular.typeface.json',
+                // called when the font has loaded
+                function (droidFont) {
+                const settings = {
+                    size: 0.01,
+                    height: 0.0008,
+                    font: droidFont,
+                }
+                const textGeometry = new TextGeometry('Device 3', settings);
+                const textMaterial = new THREE.MeshBasicMaterial();
+                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+                textMesh.position.x = 0.05;
+                textMesh.position.y = 0.12;
+                //textMesh.rotateX(-Math.PI / 2);
+                scene.add(textMesh);
+                }, 
+                // called when the font is loading
+                function (xhr) {
+                console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
+                },
+                // called when there is an error loading the font
+                function (error) {
+                console.log(error);
+                }
+            );
+        },100);
+    }
+    if(numDevices >= 4)
+    {
+        // Remove timeout later
+        setTimeout(function()
+        {	
+            //Generate colour hex from id
+            var colourHex = stringToHex(connectedDeviceIds[3]);
+            colourHex = colourHex.substring(0, 6);
+            colourHex = '0x'+colourHex;
+            phoneMesh4.material.color.setHex(colourHex);
+            scene.add(phoneMesh4);
+            phoneMesh4.position.set(0, 0.18, 0);
+            // Device text
+            fontLoader.load(
+                // path to the font (included in three)
+                '/three.js-master/examples/fonts/droid/droid_serif_regular.typeface.json',
+                // called when the font has loaded
+                function (droidFont) {
+                const settings = {
+                    size: 0.01,
+                    height: 0.0008,
+                    font: droidFont,
+                }
+                const textGeometry = new TextGeometry('Device 4', settings);
+                const textMaterial = new THREE.MeshBasicMaterial();
+                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+                textMesh.position.x = 0.05;
+                textMesh.position.y = 0.18;
+                //textMesh.rotateX(-Math.PI / 2);
+                scene.add(textMesh);
+                }, 
+                // called when the font is loading
+                function (xhr) {
+                console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
+                },
+                // called when there is an error loading the font
+                function (error) {
+                console.log(error);
+                }
+            );
         },100);
     }
     rendering();

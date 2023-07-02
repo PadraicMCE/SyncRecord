@@ -30,6 +30,14 @@ let upload = multer({ storage: storage });
 const fs = require('fs');
 const { DH_UNABLE_TO_CHECK_GENERATOR } = require('constants');
 
+/*
+const PORT = 443 || process.env.PORT;
+var https_options = {
+	key: fs.readFileSync("./ssl/privkey.pem"),
+    cert: fs.readFileSync("./ssl/cert.pem"),
+    ca: fs.readFileSync("./ssl/fullchain.pem")
+};*/
+
 const PORT = 8000 || process.env.PORT;
 const app = express();
 //const server = https.createServer(https_options, app);
@@ -66,6 +74,19 @@ io.on('connection', socket => {
 		socket.to(message.room).emit('deviceIds',message.ids);
 	});
 
+	socket.on('Record', function(message)
+	{
+		io.to(message.room).emit('Record',{command: message.command, timedate: message.timedate});
+	});
+
+	socket.on('audioData', function(message)
+	{
+		io.to(message.room).emit('audioData',{
+			audioData: message.audioData,
+			timedate: message.timedate,
+			device: message.device},
+			{ binary: true });
+	});
 
 });
 

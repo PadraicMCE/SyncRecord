@@ -32,8 +32,19 @@ var deviceInArray;
 // Tracking number of connected client devices.
 var numDevices = 0;
 var connectedDeviceIds = [];
-var localDeviceColour;
-
+// Time/Date for recording labels
+var timedate;
+// AudioWorklet variables
+var context;
+var audioSource;
+// Buffer to hold recorded audio data before sending to server / devices
+var pcmBuffer;
+var recording = false;
+// Variable for global audio stream access
+var globalStream;
+var recordPermission = false;
+var source;
+var recorderNode;
 // **************************************
 // ************ Interface *************** //
 // **************************************
@@ -78,18 +89,18 @@ document.body.appendChild(DeviceInArrayDiv);
 // 3D Scene
 const scene = new THREE.Scene();
 // Camera
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(1, 1, 1);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth*0.75 / window.innerHeight*0.75, 0.1, 1000);
+camera.position.set(0.5, 0.5, 0.5);
 camera.lookAt(0, 0, 0);
 // Renderer
 const renderer = new THREE.WebGLRenderer({antialias: true});
 renderer.setClearColor("#233143");
-renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setSize(window.innerWidth*0.75, window.innerHeight*0.75);
 document.body.appendChild(renderer.domElement);
 
 // Responsive to window size changes
 window.addEventListener('resize', () => {
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(window.innerWidth*0.75, window.innerHeight*0.75);
     renderer.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
 });
@@ -140,9 +151,9 @@ rendering();
 
 // Controls only for master device
 var controlsDiv;
-var RunCalibButton; 
-var StartRecordButton;
-var StopRecordButton;
+var RunCalibButton = document.createElement("BUTTON");
+var StartRecordButton = document.createElement("BUTTON");
+var StopRecordButton = document.createElement("BUTTON");
 
 // Create room clicked (device assigned as master of that array)
 // A random token is created.
@@ -157,6 +168,7 @@ createRoomButton.onclick = function()
     socket.emit('joinRoom',roomToken);
     // Create recording controls buttons for master device
     createAudioControls();
+    createRoomButton.disabled = true;
 }
 // Join array button pressed, user asked for array token.
 // Device joins as client to the session entered.
@@ -168,6 +180,7 @@ joinRoomButton.onclick = function()
     createSessionTokenDiv.innerHTML = "Array Token: "+sessionToken;
     roomToken = sessionToken;
     socket.emit('joinRoom',roomToken);
+    joinRoomButton.disabled = true;
 }
 
 if(master)
@@ -180,12 +193,26 @@ if(master)
     // Button to start recording clicked
     StartRecordButton.onclick = function()
     {
-
+        console.log('Start button pressed');
+        // Get current time/date
+        ed = Date.now().toString();
+        // Send command to room devices to start recording. Use token as name identifier.
+        socket.emit('Record',{
+            room: roomToken,
+            command: 'Start',
+            ed: ed
+        });
+        document.querySelector('StartRecordButton').disabled = true;
     }
     // Button to stop recording clicked
     StopRecordButton.onclick = function()
     {
-
+        // Send command to room devices to stop recording. Use token as name identifier.
+        socket.emit('Record',{
+            room: roomToken,
+            command: 'Stop',
+            ed: ed
+        });
     }
 }
 
@@ -220,6 +247,7 @@ socket.on('DevNumAssigned', message =>
 {
     if(debugprint) console.log(message);
     DeviceInArrayDiv.innerHTML = "Device number assigned: "+message;
+    // Identify the device recording in batch (and room token)
     deviceInArray = message;
 });
 socket.on('Number of Devices', function(message)
@@ -236,6 +264,161 @@ socket.on('deviceIds', ids =>
     {
         connectedDeviceIds = ids;
         console.log(connectedDeviceIds);
+    }
+});
+socket.on('Record', function(message)
+{
+    if(message.command == 'Start')
+    {
+        //console.log("Received Record Start command from server");
+        //console.log(message.command);
+        // Get timedate from master device
+        timedate = message.timedate;
+        // Get medai stream permission
+        navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(function(stream) {
+            // Permission granted, stream is available
+            // Function for passing stream to global variable
+            recordPermission = true;
+            context = new AudioContext({latencyHint: "interactive", sampleRate: 48000});
+            //context.samplerate = 48000;
+            source = context.createMediaStreamSource(stream);
+            context.audioWorklet.addModule('./js/Record.js').then(() =>
+            {
+                // Additional function?
+                //console.log("audioWorklet has been set up");
+                if(recordPermission)
+                {
+                    // Start recording on local device
+                    recorderNode = new window.AudioWorkletNode(context, 'recorder-worklet');
+                    source.connect(recorderNode);
+                    recorderNode.port.postMessage({
+                        eventType: 'Start'
+                    });
+                    pcmBuffer = new Float32Array();
+                    //Temporary audio data sent from worklet node.
+                    var audioData;
+                    recorderNode.port.onmessage = (e) =>
+                    {
+                        if(recordPermission)
+                        {
+                            if(e.data.eventType === 'data')
+                            {
+                                audioData = e.data.audioBuffer;
+                                pcmBuffer = Float32Concat(pcmBuffer,audioData);
+                            }
+                        }   
+                        if(e.data.eventType === 'started')
+                        {
+                            //console.log("Received started command from audio worklet");
+                            // Visually show that device has started recording
+                            document.body.style.backgroundColor = '0x00FF00';
+                        }
+                        if(e.data.eventType === 'stopped')
+                        {
+                            //console.log("Received stopped command from audio worklet, with timedate: "+e.data.timedate);
+                            recordPermission = false;
+                            // Visually show that device has started recording
+                            document.body.style.backgroundColor = '0x000000';
+                            //pcmBuffer = e.data.audio;
+                            shareAudio(pcmBuffer, e.data.timedate);
+                        }
+                    }
+                }
+            });
+        })
+        .catch(function(error) {
+            // Permission denied or error occurred
+            console.error('Error accessing microphone:', error);
+        });     
+    }
+    if(message.command == 'Stop')
+    {
+        //console.log("Received stop command from server");
+        console.log(message.command);
+        try {
+            //Stop recording on local device
+            recorderNode.port.postMessage({
+                eventType: 'Stop',
+                timedate: message.timedate
+            });
+        } catch(error){
+            console.log("Error sending stop command to AudioWorklet");
+        }
+    }
+});
+
+socket.on('audioData', function(message)
+{
+    //console.log("Received audio data from other device");
+    // Create download link for audio from each device
+    var blob = new Blob([message.audioData]);
+    var link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    var filename = message.timedate+"_"+message.device+".pcm";
+    console.log(filename);
+    link.download = filename;
+    //console.log("download link created");
+    //link.click(); //Automatically download the audiofile
+
+    // UI for each audio received
+    const soundClips = document.createElement('section');
+    const clipContainer = document.createElement('article');
+    const clipLabel = document.createElement('p');
+    const audio = document.createElement('audio');
+    const deleteButton = document.createElement('button');
+    const downloadButton = document.createElement('button');
+    
+    
+    clipContainer.classList.add('clip');
+    audio.setAttribute('controls', '');
+    deleteButton.innerHTML = "Delete";
+    downloadButton.innerHTML = "Download";
+    clipLabel.innerHTML = filename;
+    
+    clipContainer.appendChild(audio);
+    clipContainer.appendChild(clipLabel);
+    clipContainer.appendChild(deleteButton);
+    clipContainer.appendChild(downloadButton);
+    soundClips.appendChild(clipContainer);
+    document.body.appendChild(soundClips);
+    
+    audio.controls = true;
+
+    var filename = message.timedate+"_"+message.device+".pcm";
+    console.log('Filename: '+filename);
+    var blob = new Blob([message.audioData]);
+
+    const audioURL = window.URL.createObjectURL(blob);
+    audio.src = audioURL;
+    var element = document.createElement('a');
+    element.setAttribute('href',audioURL);
+    element.setAttribute('download',filename);
+    
+    deleteButton.onclick = function(e)
+    {
+        //console.log("Delete button pressed");
+        let evtTgt = e.target;
+        evtTgt.parentNode.parentNode.removeChild(evtTgt.parentNode);
+    }
+    
+    downloadButton.onclick = function(e)
+    {
+        //console.log("Download button pressed");
+        download(filename,audioURL);
+    }
+    
+    clipLabel.onclick = function() 
+    {
+        //console.log("Clip name clicked");
+        const existingName = clipLabel.textContent;
+        const newClipName = prompt('Enter a new name for sound clip?');
+        if (newClipName === null)
+        {
+            clipLabel.textContent = existingName;
+        }else{
+            clipLabel.textContent = newClipName;
+        }
     }
 });
 
@@ -269,20 +452,37 @@ function createAudioControls()
     RunCalibButton.style.fontSize = '50px';
     // Disable until calibration complete
     StartRecordButton.innerHTML = "Start Recording";
-    StartRecordButton.setAttribute("class","StartRecordButton");
+    //StartRecordButton.setAttribute("class","StartRecordButton");
+    StartRecordButton.id = "StartRecordButton";
     StartRecordButton.style.width = '400px';
     StartRecordButton.style.height = '200px';
     StartRecordButton.style.fontSize = '50px';
     StopRecordButton.innerHTML = "Stop Recording";
-    StopRecordButton.setAttribute("class","StopRecordButton");
+    //StopRecordButton.setAttribute("class","StopRecordButton");
+    StopRecordButton.id = "StopRecordButton";
     StopRecordButton.style.width = '400px';
     StopRecordButton.style.height = '200px';
     StopRecordButton.style.fontSize = '50px';
+    StopRecordButton.disabled = true;
+    // Functions for buttons
+    StartRecordButton.onclick = function()
+    {
+        StartRecording();
+        StartRecordButton.disabled = true;
+        StopRecordButton.disabled = false;
+    }
+    StopRecordButton.onclick = function()
+    {
+        StopRecording();
+        StopRecordButton.disabled = true;
+        StartRecordButton.disabled = false;
+    }
     // Add controls to document
     controlsDiv.appendChild(RunCalibButton);
     controlsDiv.appendChild(StartRecordButton);
     controlsDiv.appendChild(StopRecordButton);
     document.body.appendChild(controlsDiv);
+    
 }
 // Function called to create the recording status of local device.
 // Add master sees recording status of all devices?
@@ -290,7 +490,7 @@ function createRecordingStatus()
 {
 
 }
- // Window resizing
+ // Renderer window resizing
  window.addEventListener('resize', function()
 {
 	var width = window.innerWidth;
@@ -474,7 +674,8 @@ function checkDeviceRender()
     rendering();
 }
 // Function that converts a string to hex
-const stringToHex = (str) => {
+const stringToHex = (str) => 
+{
     let hex = '';
     for (let i = 0; i < str.length; i++) {
       const charCode = str.charCodeAt(i);
@@ -484,4 +685,59 @@ const stringToHex = (str) => {
       hex += hexValue.padStart(2, '0');
     }
     return hex;
-  };
+};
+function StartRecording()
+{
+    //console.log('Start button pressed');
+    // Get current time/date
+    timedate = Date.now().toString();
+    // Send command to room devices to start recording. Use token as name identifier.
+    socket.emit('Record',{
+        room: roomToken,
+        command: 'Start',
+        timedate: timedate
+    });
+}
+function StopRecording()
+{
+    //console.log('Stop button pressed');
+    socket.emit('Record',{
+        room: roomToken,
+        command: 'Stop',
+        timedate: timedate
+    });
+
+}
+function RunCalibration()
+{
+
+}
+// Adding to the PCM buffer
+function Float32Concat(first, second)
+{
+	var result = new Float32Array(first.length + second.length);
+	result.set(first);
+	result.set(second, first.length);
+	return result;
+}
+// Function to send the captured Audio to all devices in the room, through the server.
+function shareAudio(audioData, timedate)
+{
+    //console.log("Sharing audio data with other devices, filesize: "+audioData.length);
+    //console.log('ShareAudio function with timedate: '+timedate);
+    socket.emit('audioData',{ 
+        audioData: audioData,
+        timedate: timedate,
+        room: roomToken,
+        device: deviceInArray},
+        { binary: true });
+}
+// Function to download an audio track
+function download(filename, data)
+{
+    //console.log("Download function started");
+    var element = document.createElement('a');
+    element.setAttribute('href',data);
+    element.setAttribute('download',filename);
+    element.click();
+}

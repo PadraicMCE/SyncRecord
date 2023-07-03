@@ -8,10 +8,11 @@
 */
 //Using required packages
 const path = require('path');
-//const https = require('https');
-const http = require('http');
+const https = require('https');
+//const http = require('http');
 const express = require('express');
 const socketio = require('socket.io');
+const ss = require('socket.io-stream');
 //Import PythonShell module.
 const {PythonShell} =require('python-shell');
 
@@ -30,21 +31,25 @@ let upload = multer({ storage: storage });
 const fs = require('fs');
 const { DH_UNABLE_TO_CHECK_GENERATOR } = require('constants');
 
-/*
+
 const PORT = 443 || process.env.PORT;
 var https_options = {
 	key: fs.readFileSync("./ssl/privkey.pem"),
     cert: fs.readFileSync("./ssl/cert.pem"),
     ca: fs.readFileSync("./ssl/fullchain.pem")
-};*/
+};
 
-const PORT = 8000 || process.env.PORT;
+//const PORT = 8000 || process.env.PORT;
 const app = express();
-//const server = https.createServer(https_options, app);
-const server = http.createServer(app);
+const server = https.createServer(https_options, app);
+//const server = http.createServer(app);
 const io = socketio(server);
 //Set static folder
-app.use(express.static(path.join(__dirname, 'public')));
+//app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static('public', { 'extensions': ['html', 'js'], 'content-type': 'application/javascript' }));
+app.use('/build/', express.static(path.join(__dirname, 'node_modules/three/build')));
+app.use('/jsm/', express.static(path.join(__dirname, 'node_modules/three/examples/jsm')));
+app.use('/stream/', express.static(path.join(__dirname, 'node_modules/socket.io-stream')));
 
 io.on('connection', socket => {
     socket.emit('message', 'Welcome to server');

@@ -11,21 +11,25 @@
 	var dev4Pass = "Device4 ";
 	var devEmitterPass = "Master";	
 </script>
-<!--
-<script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
--->
 <script type="importmap">
   {
     "imports": {
-      "three": "./three.js-master/build/three.module.js",
-      "three/addons/": "./three.js-master/examples/jsm/"
+      "three": "./build/three.module.js",
+      "three/examples/jsm/controls/OrbitControls":"./jsm/controls/OrbitControls.js",
+      "three/examples/jsm/controls/TrackballControls":"./jsm/controls/TrackballControls.js",
+      "three/examples/jsm/libs/stats.module":"./jsm/libs/stats.module.js",
+      "three/examples/jsm/libs/dat.gui.module":"./jsm/libs/dat.gui.module.js",
+      "three/examples/jsm/loaders/FontLoader":"./jsm/loaders/FontLoader.js",
+      "three/examples/jsm/loaders/GLTFLoader":"./jsm/loaders/GLTFLoader.js",
+      "three/examples/jsm/geometries/TextGeometry":"./jsm/geometries/TextGeometry.js",
+      "stream":"./stream/socket.io-stream.js"
     }
   }
 </script>
-</head>
 <script src="/socket.io/socket.io.js"></script>
+</head>
 <body style="background-color: black;">
   <div id="div"></div>
-	<script type="module" src="./js/index.js"></script>
+	<script type="module" src="index.js"></script>
 </body>
 </html>

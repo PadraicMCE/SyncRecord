@@ -3,12 +3,14 @@
 // NOTE: Recording PCM for positioning  - use AudioWorklet.
 //       Recording final audio to .wav - use MediaRecorder. Possibly convert from AudioWorklet raw data.
 
-import * as THREE from "three";
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
-import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls';
+import { FontLoader } from 'three/examples/jsm/loaders/FontLoader';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
+//import Stats from 'three/examples/jsm/libs/stats.module'
+//import { GUI } from 'three/examples/jsm/libs/dat.gui.module'
 
 //Font for text in scene
 const fontLoader = new FontLoader();
@@ -16,7 +18,7 @@ const fontLoader = new FontLoader();
 var points = [];
 // Socketio
 const socket = io();
-
+import * as ss from 'stream';
 // **************************************
 // ************ Variables *************** //
 // **************************************
@@ -519,7 +521,7 @@ function checkDeviceRender()
             // Device text
             fontLoader.load(
                 // path to the font (included in three)
-                '/three.js-master/examples/fonts/droid/droid_serif_regular.typeface.json',
+                'droid_serif_regular.typeface.json',
                 // called when the font has loaded
                 function (droidFont) {
                 const settings = {
@@ -560,7 +562,7 @@ function checkDeviceRender()
             // Device text
             fontLoader.load(
                 // path to the font (included in three)
-                '/three.js-master/examples/fonts/droid/droid_serif_regular.typeface.json',
+                'droid_serif_regular.typeface.json',
                 // called when the font has loaded
                 function (droidFont) {
                 const settings = {
@@ -602,7 +604,7 @@ function checkDeviceRender()
             // Device text
             fontLoader.load(
                 // path to the font (included in three)
-                '/three.js-master/examples/fonts/droid/droid_serif_regular.typeface.json',
+                'droid_serif_regular.typeface.json',
                 // called when the font has loaded
                 function (droidFont) {
                 const settings = {
@@ -644,7 +646,7 @@ function checkDeviceRender()
             // Device text
             fontLoader.load(
                 // path to the font (included in three)
-                '/three.js-master/examples/fonts/droid/droid_serif_regular.typeface.json',
+                'droid_serif_regular.typeface.json',
                 // called when the font has loaded
                 function (droidFont) {
                 const settings = {

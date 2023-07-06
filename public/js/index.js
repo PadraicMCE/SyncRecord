@@ -18,7 +18,7 @@ const fontLoader = new FontLoader();
 var points = [];
 // Socketio
 const socket = io();
-import * as ss from 'stream';
+
 // **************************************
 // ************ Variables *************** //
 // **************************************
@@ -40,7 +40,7 @@ var timedate;
 var context;
 var audioSource;
 // Buffer to hold recorded audio data before sending to server / devices
-var pcmBuffer;
+//var pcmBuffer;
 var recording = false;
 // Variable for global audio stream access
 var globalStream;
@@ -190,7 +190,9 @@ if(master)
     // Button to run positioning calibration clicked
     RunCalibButton.onclick = function()
     {
-
+        //Run distance measurement sequence.
+        console.log('Start distance calibration button pressed');
+        //distanceMeasurement();
     }
     // Button to start recording clicked
     StartRecordButton.onclick = function()
@@ -297,7 +299,7 @@ socket.on('Record', function(message)
                     recorderNode.port.postMessage({
                         eventType: 'Start'
                     });
-                    pcmBuffer = new Float32Array();
+                    var pcmBuffer = new Float32Array();
                     //Temporary audio data sent from worklet node.
                     var audioData;
                     recorderNode.port.onmessage = (e) =>
@@ -354,12 +356,13 @@ socket.on('audioData', function(message)
 {
     //console.log("Received audio data from other device");
     // Create download link for audio from each device
+    /*
     var blob = new Blob([message.audioData]);
     var link = document.createElement('a');
     link.href = window.URL.createObjectURL(blob);
     var filename = message.timedate+"_"+message.device+".pcm";
     console.log(filename);
-    link.download = filename;
+    link.download = filename; */
     //console.log("download link created");
     //link.click(); //Automatically download the audiofile
 
@@ -371,12 +374,13 @@ socket.on('audioData', function(message)
     const deleteButton = document.createElement('button');
     const downloadButton = document.createElement('button');
     
-    
+    var filename = message.timedate+"_"+message.device+".pcm";
     clipContainer.classList.add('clip');
     audio.setAttribute('controls', '');
     deleteButton.innerHTML = "Delete";
     downloadButton.innerHTML = "Download";
     clipLabel.innerHTML = filename;
+    clipLabel.style.color = 'white';
     
     clipContainer.appendChild(audio);
     clipContainer.appendChild(clipLabel);
@@ -387,9 +391,8 @@ socket.on('audioData', function(message)
     
     audio.controls = true;
 
-    var filename = message.timedate+"_"+message.device+".pcm";
     console.log('Filename: '+filename);
-    var blob = new Blob([message.audioData]);
+    var blob = new Blob([message.audioData],{type: 'audio/wav'});
 
     const audioURL = window.URL.createObjectURL(blob);
     audio.src = audioURL;
@@ -521,7 +524,7 @@ function checkDeviceRender()
             // Device text
             fontLoader.load(
                 // path to the font (included in three)
-                'droid_serif_regular.typeface.json',
+                '../droid_serif_regular.typeface.json',
                 // called when the font has loaded
                 function (droidFont) {
                 const settings = {
@@ -562,7 +565,7 @@ function checkDeviceRender()
             // Device text
             fontLoader.load(
                 // path to the font (included in three)
-                'droid_serif_regular.typeface.json',
+                '../droid_serif_regular.typeface.json',
                 // called when the font has loaded
                 function (droidFont) {
                 const settings = {
@@ -604,7 +607,7 @@ function checkDeviceRender()
             // Device text
             fontLoader.load(
                 // path to the font (included in three)
-                'droid_serif_regular.typeface.json',
+                '../droid_serif_regular.typeface.json',
                 // called when the font has loaded
                 function (droidFont) {
                 const settings = {
@@ -646,7 +649,7 @@ function checkDeviceRender()
             // Device text
             fontLoader.load(
                 // path to the font (included in three)
-                'droid_serif_regular.typeface.json',
+                '../droid_serif_regular.typeface.json',
                 // called when the font has loaded
                 function (droidFont) {
                 const settings = {
@@ -725,14 +728,37 @@ function Float32Concat(first, second)
 // Function to send the captured Audio to all devices in the room, through the server.
 function shareAudio(audioData, timedate)
 {
-    //console.log("Sharing audio data with other devices, filesize: "+audioData.length);
+    console.log("Sharing audio data with other devices, filesize: "+audioData.length);
     //console.log('ShareAudio function with timedate: '+timedate);
+    
     socket.emit('audioData',{ 
         audioData: audioData,
         timedate: timedate,
         room: roomToken,
         device: deviceInArray},
         { binary: true });
+  
+   /*
+    const form = new FormData();
+    form.append('file', audioData);
+    form.append('name', timedate+'_'+deviceInArray+'.pcm');
+    form.append('room', roomToken);
+    const options = {
+        hostname: 'syncrecord.eu',
+        port: 443,
+        path: '/audioShare',
+        method: 'POST',
+        headers: form.getHeaders()
+        };
+    const req = https.request(options, (res) => {
+        console.log(`Server responded with status code: ${res.statusCode}`);
+    });
+    
+    form.pipe(req);
+    
+    req.on('error', (error) => {
+        console.error(`Error sending file: ${error.message}`);
+    }); */
 }
 // Function to download an audio track
 function download(filename, data)
@@ -742,4 +768,19 @@ function download(filename, data)
     element.setAttribute('href',data);
     element.setAttribute('download',filename);
     element.click();
+}
+function distanceMeasurement()
+{
+    const distanceprbs1 = new Audio('../prbs1.wav');
+    const distanceprbs16 = new Audio('../prbs16.wav');
+    distanceprbs1.loop = false;
+    distanceprbs16.loop = false;
+    distanceprbs1.volume = 1.0;
+    distanceprbs16.volume = 1.0;
+    ed = Date.now().toString();
+    socket.emit('recordStart',{
+        timedate: ed,
+        room: roomToken,
+        device: deviceInArray
+    });
 }

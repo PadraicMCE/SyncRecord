@@ -53,10 +53,10 @@ app.use('/build/', express.static(path.join(__dirname, 'node_modules/three/build
 app.use('/jsm/', express.static(path.join(__dirname, 'node_modules/three/examples/jsm')));
 //app.use('/stream/', express.static(path.join(__dirname, 'node_modules/socket.io-stream')));
 
-
+/*
 app.listen(3000, () => {
   console.log('Server is listening on port 3000');
-});
+});*/
 
 //HTTPS Streaming of audio
 /*
@@ -152,6 +152,124 @@ io.on('connection', socket => {
 			device: message.device},
 			{ binary: true });
 	});
+
+	socket.on('distanceRecord', function(message)
+	{
+		console.log('Received "distanceRecord" with command: '+message.command+' from: '+socket.id);
+		if(message.command == 'Started')
+		{
+			console.log('Started response received from device: '+message.device);
+			try{
+				io.to(message.master).emit('distanceRecord',{
+					timedate: message.timedate,
+					command: message.command,
+					device: message.device,
+					devinarray: message.devinarray,
+					room: message.room,
+					master: message.master
+				});
+			} catch(error){
+				//Add error handling. Send error message to room.
+			}
+			var name = message.timedate;
+			var dev = message.devinarray;
+			var time = message.localtime;
+			fs.appendFile('./tmp/'+name+'.txt','startrecord '+dev+': '+time+'\r',
+			function(err){
+				if(err) throw err;
+				console.log('file: ./tmp/'+name+'.txt'+'  data: startrecord '+dev+': '+time+'\r');
+			});
+			
+		}
+		else if(message.command == 'PRBSPlay')
+		{
+			io.to(message.device).emit('distanceRecord',{
+				timedate: message.timedate,
+				command: message.command,
+				device: message.device,
+				room: message.room,
+				master: message.master
+			});
+		}
+		else if(message.command == 'PRBSReady')
+		{
+			io.to(message.room).emit('distanceRecord',{
+				timedate: message.timedate,
+				command: message.command,
+				device: message.device,
+				deviceNo: message.deviceNo,
+				room: message.room,
+				master: message.master
+			});
+		}
+		else if(message.command == 'Ready')
+		{
+			//Relay to device to play PRBS
+			io.to(message.device).emit('distanceRecord',{
+				timedate: message.timedate,
+				command: 'Ready',
+				devinarray: message.devinarray,
+				deviceNo: message.deviceNo,
+				room: message.room,
+				master: message.master
+			});
+			//Log local time of prbs being played
+			fs.appendFile('./tmp/'+message.timedate+'.txt',
+			'startprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r',
+			function(err){
+				if(err) throw err;
+				console.log('file: ./tmp/'+name+'.txt'+'  data: startprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
+			});
+		}
+		/*
+		else if(message.command == 'EmitPRBS')
+		{
+			console.log('Emit PRBS received for device: '+message.device);
+			console.log('Sending emit PRBS command to device: '+message.device);
+			io.to(message.device).emit('distanceRecord',{
+				timedate: message.timedate,
+				command: message.command,
+				device: message.device,
+				room: message.room,
+				master: message.master
+			});
+		}*/
+
+		////////	
+		else if(message.command == 'EmitPRBSFinshed')
+		{
+			console.log('Sending finished distance for pair');
+			io.to(message.room).emit('distancePRBS' ,{
+				timedate: message.timedate,
+				device1: message.device1,
+				device2: message.device2,
+				command: 'Finished',
+				pair: message.pair,
+				room: message.room
+			});
+		}
+		else if(message.command == 'Stop')
+		{
+			//console.log('Sending command: '+message.command+' to devices: '+message.device1+' and '+message.device2);
+			io.to(message.room).emit('distanceRecord',{
+				timedate: message.timedate,
+				command: message.command,
+				room: message.room,
+				master: message.master
+			});
+		}
+		else if(message.command == 'Start')
+		{
+			console.log('Sending command: '+message.command+' to room: '+message.room);
+			io.to(message.room).emit('distanceRecord',{
+				timedate: message.timedate,
+				command: 'Start',
+				room: message.room,
+				master: message.master
+			});
+		}
+	});
+	
 
 });
 

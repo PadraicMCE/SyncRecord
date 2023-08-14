@@ -34,6 +34,8 @@ var deviceInArray;
 // Tracking number of connected client devices.
 var numDevices = 0;
 var connectedDeviceIds = [];
+var recordingDevices = [];
+var readyDevices = [];
 // Time/Date for recording labels
 var timedate;
 // AudioWorklet variables
@@ -47,6 +49,13 @@ var globalStream;
 var recordPermission = false;
 var source;
 var recorderNode;
+// Variables for PRBS distance measurement
+var distanceprbs1;
+var distanceprbs2;
+var pairs;
+// Temp flag variables for device recording
+var dev1Rec = false;
+var dev2Rec = false;
 // **************************************
 // ************ Interface *************** //
 // **************************************
@@ -85,6 +94,15 @@ createRoomDiv.appendChild(createSessionTokenDiv);
 document.body.appendChild(joinRoomDiv);
 document.body.appendChild(DeviceInArrayDiv);
 
+//Get microphone access
+navigator.mediaDevices.getUserMedia({ audio: true })
+.then(function(stream) {
+    //Access to microphone granted
+})
+.catch(function(error) {
+    // Permission denied or error occurred
+    console.error('Error accessing microphone:', error);
+});
 // **************************************
 // ************** WEBGL ***************** //
 // **************************************
@@ -184,7 +202,7 @@ joinRoomButton.onclick = function()
     socket.emit('joinRoom',roomToken);
     joinRoomButton.disabled = true;
 }
-
+/*
 if(master)
 {
     // Button to run positioning calibration clicked
@@ -192,7 +210,7 @@ if(master)
     {
         //Run distance measurement sequence.
         console.log('Start distance calibration button pressed');
-        //distanceMeasurement();
+        distanceMeasurement();
     }
     // Button to start recording clicked
     StartRecordButton.onclick = function()
@@ -219,6 +237,7 @@ if(master)
         });
     }
 }
+*/
 
 // **************************************
 // *********** Communications *********** //
@@ -231,10 +250,10 @@ socket.on('joinedRoom', function(message)
     if(master==true)
     {
         //Poll connected devices to check a device is not reconnecting?
+        numDevices = numDevices + 1;
         if(debugprint) console.log(message.id);
         connectedDeviceIds.push(message.id);
         console.log(connectedDeviceIds);
-        numDevices = numDevices + 1;
         if(debugprint) console.log(numDevices);
         socket.emit('assignDevice', {
             device: numDevices,
@@ -253,6 +272,7 @@ socket.on('DevNumAssigned', message =>
     DeviceInArrayDiv.innerHTML = "Device number assigned: "+message;
     // Identify the device recording in batch (and room token)
     deviceInArray = message;
+    console.log('Device in array: '+deviceInArray);
 });
 socket.on('Number of Devices', function(message)
 {
@@ -427,6 +447,264 @@ socket.on('audioData', function(message)
     }
 });
 
+socket.on('distanceRecord', function(message)
+{
+    //console.log('Received "distanceRecord" with command: '+message.command+' from: '+message.device);
+    timedate = message.timedate;
+    if(message.command == 'Start')
+    {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(function(stream) {
+            // Permission granted, stream is available
+            // Function for passing stream to global variable
+            recordPermission = true;
+            context = new AudioContext({latencyHint: "interactive", sampleRate: 48000}); // Select sample rate?
+            //context.samplerate = 48000;
+            source = context.createMediaStreamSource(stream);
+            context.audioWorklet.addModule('./js/Record.js').then(() =>
+            {
+                // Additional function?
+                //console.log("audioWorklet has been set up");
+                if(recordPermission)
+                {
+                    // Start recording on local device
+                    recorderNode = new window.AudioWorkletNode(context, 'recorder-worklet');
+                    source.connect(recorderNode);
+                    recorderNode.port.postMessage({
+                        eventType: 'Start'
+                    });
+                    var pcmBuffer = new Float32Array();
+                    //Temporary audio data sent from worklet node.
+                    var audioData;
+                    recorderNode.port.onmessage = (e) =>
+                    {
+                        /*
+                        if(recordPermission)
+                        {
+                            if(e.data.eventType === 'data')
+                            {
+                                audioData = e.data.audioBuffer;
+                                pcmBuffer = Float32Concat(pcmBuffer,audioData);
+                            }
+                        } */  
+                        if(e.data.eventType === 'started')
+                        {
+                            console.log("Received started command from audio worklet");
+                            // Visually show that device has started recording
+                            document.body.style.backgroundColor = '0x00FF00'; //FIX
+                            var localtime = Date.now().toString();
+                            socket.emit('distanceRecord',{
+                                timedate: message.timedate,
+                                command: 'Started',
+                                device: socket.id,
+                                devinarray: deviceInArray,
+                                localtime: localtime,
+                                room: roomToken,
+                                master: message.master
+                            });
+                        }
+                        if(e.data.eventType === 'stopped')
+                        {
+                            console.log("Received stopped command from audio worklet, with timedate: "+e.data.timedate);
+                            recordPermission = false;
+                            dev1Rec = false;
+                            dev2Rec = false;
+                            // Visually show that device has started recording
+                            document.body.style.backgroundColor = '0x000000';
+                            //pcmBuffer = e.data.audio;
+                            // Distance measurement script
+                            //shareAudio(pcmBuffer, e.data.timedate);
+                            source.disconnect(recorderNode);
+                        }
+                    }
+                }
+            });
+        })
+        .catch(function(error) {
+            // Permission denied or error occurred
+            console.error('Error accessing microphone:', error);
+        });    
+    }
+    if(message.command == 'Stop')
+    {
+        console.log("Received stop command from server");
+        console.log(message.command);
+        try {
+            //Stop recording on local device
+            recorderNode.port.postMessage({
+                eventType: 'Stop',
+                timedate: message.timedate
+            });
+        } catch(error){
+            console.log("Error sending stop command to AudioWorklet");
+            // Add additional error handling
+        }
+    }
+    if(message.command == 'Started')
+    {
+        /*
+        console.log('Started command received: '+message.device+' at: '+deviceInArray);
+        if(message.device == pairs[message.pair-1][0]) 
+        {
+            console.log('Device 1 started recording');
+            dev1Rec = true;
+        }
+        if(message.device == pairs[message.pair-1][1])
+        {
+            console.log('Device 2 started recording');
+            dev2Rec = true;
+        }
+        //if(message.pair < pairs)
+        if(dev1Rec == true && dev2Rec == true)
+        {
+            console.log('Both devices in pair are recording');
+            socket.emit('distanceRecord',{
+                timedate: message.timedate,
+                device1: message.device1,
+                device2: message.device2,
+                command: 'EmitPRBS',
+                device: 1,
+                pair: message.pair,
+                room: message.room
+            });
+        }
+        */
+        //Check through devices in current section and note if recording
+        recordingDevices[message.devinarray] = 1;
+        if(recordingDevices.length == connectedDeviceIds.length && recordingDevices.every(value => value === 1))
+        {
+            console.log(recordingDevices);
+            console.log('All devices are recording');
+            socket.emit('distanceRecord',{
+                timedate: message.timedate,
+                command: 'PRBSPlay',
+                device: connectedDeviceIds[0],
+                room: message.room,
+                master: message.master
+            });
+        }
+    }
+    if(message.command == 'PRBSPlay')
+    {
+        //Add additional check to be ready?
+        console.log('Recieved command to ready PRBS');
+        socket.emit('distanceRecord',{
+            timedate: message.timedate,
+            command: 'PRBSReady',
+            device: message.device,
+            deviceNo: deviceInArray,
+            room: message.room,
+            master: message.master
+        })
+    }
+    if(message.command == 'PRBSReady')
+    {
+        console.log('Recieved PRBSReady');
+        var localtime = Date.now().toString();
+        socket.emit('distanceRecord',{
+            timedate: message.timedate,
+            command: 'Ready',
+            device: message.device,
+            devinarray: deviceInArray,
+            deviceNo: message.deviceNo,
+            localtime: localtime,
+            room: roomToken,
+            master: message.master
+        });
+    }
+    if(message.command == 'Ready')
+    {
+        console.log('Received command to play PRBS');
+        //Check through devices in current section and note if recording
+        /*
+        for(let i = 0; i < connectedDeviceIds.length; i++)
+        {
+            if(message.device == connectedDeviceIds[i])
+            {
+                readyDevices[i] = 1;
+            }
+        }
+        */
+        readyDevices[message.devinarray] = 1;
+        if(readyDevices.length == connectedDeviceIds.length && readyDevices.every(value => value === 1))
+        {
+            //
+            console.log('Device playing PRBS');
+            var distanceprbs1 = new Audio('../prbs1.wav');
+            distanceprbs1.loop = false;
+            distanceprbs1.volume = 1.0;
+            distanceprbs1.play();
+            distanceprbs1.onended = function()
+            {
+                console.log('PRBS finished');
+                /*
+                socket.emit('distanceRecord',{
+                    timedate: message.timedate,
+                    command: 'Finished',
+                    deviceNo: deviceInArray,
+                    room: message.room,
+                    master: message.master
+                });
+                */
+            };
+        }
+    }
+    if(message.command == 'EmitPRBS')
+    {
+        /*
+        console.log('Device received PRBS command');
+        var distanceprbs1 = new Audio('../prbs1.wav');
+        distanceprbs1.loop = false;
+        distanceprbs1.volume = 1.0;
+        distanceprbs1.play();
+        distanceprbs1.onended = function()
+        {
+            console.log('PRBS 1 finished');
+            socket.emit('distanceRecord',{
+                timedate: message.timedate,
+                device1: message.device1,
+                device2: message.device2,
+                command: 'EmitPRBS',
+                device: 2,
+                pair: message.pair,
+                room: message.room
+            });
+        };
+        */
+    }
+    if(message.command == 'Finished' && deviceInArray === 1)
+    {
+        //Stop recording -> send to python script
+        socket.emit('distanceRecord' ,{
+            command: 'Stop',
+            room: message.room,
+            device1: message.device1,
+            device2: message.device2,
+            pair: message.pair,
+            room: message.room
+        });
+        //Finished one pair of devices.
+        console.log('Finished distance measurement for one pair of devices');
+        console.log('Pairs length: '+pairs.length);
+        /*
+        if(message.pair < pairs.length) // If more pairs availabled to measure distance
+        {
+            console.log('Device1: '+(pairs[message.pair+1][0]));
+            console.log('Device2: '+(pairs[message.pair+1][1]));
+            console.log('Starting next pair distance measurement, pair: '+(message.pair+1))
+            const ed = Date.now().toString();
+            socket.emit('distanceRecord',{
+                timedate: ed,
+                device1: pairs[message.pair+1][0],
+                device2: pairs[message.pair+1][1],
+                command: 'Start',
+                pair: message.pair + 1,
+                room: roomToken
+            });
+        }*/
+    }
+});
+
 // **************************************
 // ************* Functions ************** //
 // **************************************
@@ -434,7 +712,7 @@ socket.on('audioData', function(message)
 // Generate random token for socket rooms.
 // Used by master device when creating the room, then entered by client devices to join the room.
 const rand = () => {
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const characters = 'ABCDEFGHIJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz0123456789';
     let token = '';
     for (let i = 0; i < 4; i++) {
         const randomIndex = Math.floor(Math.random() * characters.length);
@@ -481,6 +759,11 @@ function createAudioControls()
         StopRecording();
         StopRecordButton.disabled = true;
         StartRecordButton.disabled = false;
+    }
+    RunCalibButton.onclick = function()
+    {
+        console.log('Start distance calibration button pressed');
+        distanceMeasurement();
     }
     // Add controls to document
     controlsDiv.appendChild(RunCalibButton);
@@ -771,16 +1054,80 @@ function download(filename, data)
 }
 function distanceMeasurement()
 {
-    const distanceprbs1 = new Audio('../prbs1.wav');
-    const distanceprbs16 = new Audio('../prbs16.wav');
+    /*
+    distanceprbs1 = new Audio('../prbs1.wav');
+    distanceprbs2 = new Audio('../prbs16.wav');
     distanceprbs1.loop = false;
-    distanceprbs16.loop = false;
+    distanceprbs2.loop = false;
     distanceprbs1.volume = 1.0;
-    distanceprbs16.volume = 1.0;
+    distanceprbs2.volume = 1.0;
+    */
+    //RoundRobin pairing of devices
+    //const numbers = [1,2,3,4];
+    //pairs = generateRoundRobinPairs(connectedDeviceIds);
+    //console.log(pairs);
+    const ed = Date.now().toString();
+    socket.emit('distanceRecord',{
+        timedate: ed,
+        command: 'Start',
+        room: roomToken,
+        master: socket.id
+    });
+    /*
+    socket.emit('distanceRecord',{
+        timedate: ed,
+        device1: pairs[0][0],
+        device2: pairs[0][1],
+        command: 'Start',
+        pair: 1,
+        room: roomToken
+    });*/
+    //console.log(pairs[0][0]);
+    //console.log(pairs[0][1]);
+    //console.log(pairs.length);
+    /*
+    for (let i = 0; i < pairs.length - 1; i++)
+    {
+        var device1 = pairs[i][0];
+        var device2 = pairs[i][1];
+        const ed = Date.now().toString();
+        socket.emit('distanceRecord',{
+            timedate: ed,
+            device1: device1,
+            device2: device2,
+            command: 'Start',
+            pair: i
+        });
+    }*/
+    /*
     ed = Date.now().toString();
     socket.emit('recordStart',{
         timedate: ed,
         room: roomToken,
         device: deviceInArray
     });
+    */
 }
+function generateRoundRobinPairs(numbers) {
+    var n = numbers.length;
+    console.log('n: '+n);
+    const pairs = []; 
+    if (n % 2 !== 0) {
+      // If the number of elements is odd, add a dummy element
+      numbers.push(null);
+      n++;
+    }
+    for (let i = 0; i < n - 1; i++) {
+      for (let j = 0; j < n / 2; j++) {
+        const first = numbers[j];
+        const second = numbers[n - 1 - j];
+  
+        if (first !== null && second !== null) {
+          pairs.push([first, second]);
+        }
+      }
+      numbers.splice(1, 0, numbers.pop());
+    }
+    return pairs;
+}
+  

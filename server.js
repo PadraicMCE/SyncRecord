@@ -137,20 +137,24 @@ io.on('connection', socket => {
 	{
 		console.log('audio data received, size: '+message.audioData.length+' from device: '+message.device);
 		// Create a new WaveFile instance
-		const wav = new WaveFile();
+		//const wav = new WaveFile();
 		// Set the audio format properties
-		wav.fromScratch(1, 48000, '32f', message.audioData);
+		//wav.fromScratch(1, 48000, '32f', message.audioData);
 		// Change the bit depth to 32-bit
-		wav.toBitDepth("16");
+		//wav.toBitDepth("16");
 		// Save the WAV file
-		const wavBuffer = wav.toBuffer();
+		//const wavBuffer = wav.toBuffer();
 
 		//Sending raw pcm, can change to .wav
+		/*
 		io.to(message.room).emit('audioData',{
 			audioData: message.audioData,
 			timedate: message.timedate,
 			device: message.device},
 			{ binary: true });
+			*/
+		var filename = message.timedate+'_'+message.device;
+		saveAudioToFile(message.room, filename, message.audioData);
 	});
 
 	socket.on('distanceRecord', function(message)
@@ -158,7 +162,7 @@ io.on('connection', socket => {
 		console.log('Received "distanceRecord" with command: '+message.command+' from: '+socket.id);
 		if(message.command == 'Started')
 		{
-			console.log('Started response received from device: '+message.device);
+			//console.log('Started response received from device: '+message.device);
 			try{
 				io.to(message.master).emit('distanceRecord',{
 					timedate: message.timedate,
@@ -174,10 +178,10 @@ io.on('connection', socket => {
 			var name = message.timedate;
 			var dev = message.devinarray;
 			var time = message.localtime;
-			fs.appendFile('./tmp/'+name+'.txt','startrecord '+dev+': '+time+'\r',
+			fs.appendFile('./tmp/'+message.room+'/'+name+'.txt','startrecord '+dev+': '+time+'\r',
 			function(err){
 				if(err) throw err;
-				console.log('file: ./tmp/'+name+'.txt'+'  data: startrecord '+dev+': '+time+'\r');
+				//console.log('file: ./tmp/'+name+'.txt'+'  data: startrecord '+dev+': '+time+'\r');
 			});
 			
 		}
@@ -204,48 +208,45 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'Ready')
 		{
+			console.log('startprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime);
 			//Relay to device to play PRBS
 			io.to(message.device).emit('distanceRecord',{
 				timedate: message.timedate,
 				command: 'Ready',
+				device: message.device,
 				devinarray: message.devinarray,
 				deviceNo: message.deviceNo,
 				room: message.room,
 				master: message.master
 			});
 			//Log local time of prbs being played
-			fs.appendFile('./tmp/'+message.timedate+'.txt',
+			fs.appendFile('./tmp/'+message.room+'/'+message.timedate+'.txt',
 			'startprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r',
 			function(err){
 				if(err) throw err;
-				console.log('file: ./tmp/'+name+'.txt'+'  data: startprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
+				//console.log('file: ./tmp/'+name+'.txt'+'  data: startprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
 			});
 		}
-		/*
-		else if(message.command == 'EmitPRBS')
+		else if(message.command == 'Finished')
 		{
-			console.log('Emit PRBS received for device: '+message.device);
-			console.log('Sending emit PRBS command to device: '+message.device);
+			console.log("Received "+message.command+" from "+message.devinarray+" sending to "+message.device)
 			io.to(message.device).emit('distanceRecord',{
 				timedate: message.timedate,
-				command: message.command,
+				command: 'Finished',
 				device: message.device,
+				devinarray: message.devinarray,
+				deviceNo: message.deviceNo,
+				localtime: message.localtime,
 				room: message.room,
 				master: message.master
 			});
-		}*/
-
-		////////	
-		else if(message.command == 'EmitPRBSFinshed')
-		{
-			console.log('Sending finished distance for pair');
-			io.to(message.room).emit('distancePRBS' ,{
-				timedate: message.timedate,
-				device1: message.device1,
-				device2: message.device2,
-				command: 'Finished',
-				pair: message.pair,
-				room: message.room
+			console.log('stoppedprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime);
+			//Log local time of prbs being played
+			fs.appendFile('./tmp/'+message.room+'/'+message.timedate+'.txt',
+			'stoppedprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r',
+			function(err){
+				if(err) throw err;
+				//console.log('file: ./tmp/'+name+'.txt'+'  data: stopprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
 			});
 		}
 		else if(message.command == 'Stop')
@@ -260,10 +261,46 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'Start')
 		{
-			console.log('Sending command: '+message.command+' to room: '+message.room);
+			//console.log('Sending command: '+message.command+' to room: '+message.room);
 			io.to(message.room).emit('distanceRecord',{
 				timedate: message.timedate,
 				command: 'Start',
+				room: message.room,
+				master: message.master
+			});
+			fs.mkdir('./tmp/'+message.room, {recursive: true}, (err) => {
+				if (err) {
+					console.error('Error creating directory:', err);
+				} else {
+					console.log('Directory created successfully or already exists.');
+					fs.appendFile('./tmp/'+message.room+'/'+message.timedate+'.txt',
+					'numberdevices '+message.numDevices+'\r',
+					function(err){
+						if(err) throw err;
+						//console.log('file: ./tmp/'+name+'.txt'+'  data: stopprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
+					});
+				}
+			});
+		}
+		else if(message.command == 'Stopped')
+		{
+			//Log local time of prbs being played
+			fs.appendFile('./tmp/'+message.room+'/'+message.timedate+'.txt',
+			'stoppedrecord '+message.devinarray+': '+message.localtime+'\r',
+			function(err){
+				if(err) throw err;
+				//console.log('file: ./tmp/'+name+'.txt'+'  data: stopprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
+			});
+		}
+		else if(message.command == 'PRBSFinished')
+		{
+			io.to(message.room).emit('distanceRecord',{
+				timedate: message.timedate,
+				command: 'PRBSFinished',
+				device: message.device,
+				devinarray: message.devinarray,
+				deviceNo: message.deviceNo,
+				localtime: message.localtime,
 				room: message.room,
 				master: message.master
 			});
@@ -279,6 +316,18 @@ io.of("/").adapter.on("create-room", (room) => {
 io.of("/").adapter.on("join-room", (room, id) => {
 	console.log(`socket ${id} has joined room ${room}`);
 });
+
+function saveAudioToFile(session, filename, data) {
+	const filePath = './tmp/'+session+'/'+filename+'.pcm';
+	// Append the data to the file
+	fs.appendFile(filePath, data, (err) => {
+	  if (err) {
+		console.error('Error saving audio:', err);
+	  } else {
+		console.log('Audio data saved to file: '+filePath);
+	  }
+	});
+  }
 
 server.listen(PORT);
 console.log(`Server running on ${PORT}`);

@@ -13,7 +13,7 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
 //import { GUI } from 'three/examples/jsm/libs/dat.gui.module'
 
 //Font for text in scene
-const fontLoader = new FontLoader();
+//const fontLoader = new FontLoader();
 //Lines
 var points = [];
 // Socketio
@@ -36,8 +36,11 @@ var numDevices = 0;
 var connectedDeviceIds = [];
 var recordingDevices = [];
 var readyDevices = [];
+var finishedDevices = [];
 // Time/Date for recording labels
 var timedate;
+// Current number of samples in recording
+var totSamples = 0;
 // AudioWorklet variables
 var context;
 var audioSource;
@@ -107,6 +110,7 @@ navigator.mediaDevices.getUserMedia({ audio: true })
 // ************** WEBGL ***************** //
 // **************************************
 // 3D Scene
+/*
 const scene = new THREE.Scene();
 // Camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth*0.75 / window.innerHeight*0.75, 0.1, 1000);
@@ -117,14 +121,17 @@ const renderer = new THREE.WebGLRenderer({antialias: true});
 renderer.setClearColor("#233143");
 renderer.setSize(window.innerWidth*0.75, window.innerHeight*0.75);
 document.body.appendChild(renderer.domElement);
-
+*/
 // Responsive to window size changes
+/*
 window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth*0.75, window.innerHeight*0.75);
     renderer.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
 });
+*/
 // Create Box
+/*
 const phoneGeometry = new THREE.BoxGeometry(0.1, 0.05, 0.0025);
 var phoneMaterial1 = new THREE.MeshLambertMaterial({color: 0x000000});
 var phoneMaterial2 = new THREE.MeshLambertMaterial({color: 0x000000});
@@ -134,6 +141,7 @@ const phoneMesh1 = new THREE.Mesh(phoneGeometry, phoneMaterial1);
 const phoneMesh2 = new THREE.Mesh(phoneGeometry, phoneMaterial2);
 const phoneMesh3 = new THREE.Mesh(phoneGeometry, phoneMaterial3);
 const phoneMesh4 = new THREE.Mesh(phoneGeometry, phoneMaterial4);
+*/
 /*
 scene.add(phoneMesh1);
 scene.add(phoneMesh2);
@@ -143,6 +151,7 @@ phoneMesh2.position.set(0.5, 0, 0); // Optional, 0,0,0 is the default
 phoneMesh3.position.set(1, 0, 0); // Optional, 0,0,0 is the default
 */
 // Light
+/*
 const light = new THREE.PointLight(0xFFFFFF, 1, 100);
 light.position.set(5, 5, 5);
 scene.add(light);
@@ -164,7 +173,7 @@ const rendering = function() {
     controls.update();
 }
 rendering();
-
+*/
 // **************************************
 // ************** Controls ************** //
 // **************************************
@@ -189,6 +198,7 @@ createRoomButton.onclick = function()
     // Create recording controls buttons for master device
     createAudioControls();
     createRoomButton.disabled = true;
+    joinRoomButton.disabled = true;
 }
 // Join array button pressed, user asked for array token.
 // Device joins as client to the session entered.
@@ -201,43 +211,8 @@ joinRoomButton.onclick = function()
     roomToken = sessionToken;
     socket.emit('joinRoom',roomToken);
     joinRoomButton.disabled = true;
+    createRoomButton.disabled = true;
 }
-/*
-if(master)
-{
-    // Button to run positioning calibration clicked
-    RunCalibButton.onclick = function()
-    {
-        //Run distance measurement sequence.
-        console.log('Start distance calibration button pressed');
-        distanceMeasurement();
-    }
-    // Button to start recording clicked
-    StartRecordButton.onclick = function()
-    {
-        console.log('Start button pressed');
-        // Get current time/date
-        ed = Date.now().toString();
-        // Send command to room devices to start recording. Use token as name identifier.
-        socket.emit('Record',{
-            room: roomToken,
-            command: 'Start',
-            ed: ed
-        });
-        document.querySelector('StartRecordButton').disabled = true;
-    }
-    // Button to stop recording clicked
-    StopRecordButton.onclick = function()
-    {
-        // Send command to room devices to stop recording. Use token as name identifier.
-        socket.emit('Record',{
-            room: roomToken,
-            command: 'Stop',
-            ed: ed
-        });
-    }
-}
-*/
 
 // **************************************
 // *********** Communications *********** //
@@ -280,7 +255,7 @@ socket.on('Number of Devices', function(message)
     {
         numDevices = message.device;
     }
-    checkDeviceRender();
+    //checkDeviceRender();
 });
 socket.on('deviceIds', ids =>
 {
@@ -453,6 +428,11 @@ socket.on('distanceRecord', function(message)
     timedate = message.timedate;
     if(message.command == 'Start')
     {
+        //Reset all recording and ready flags
+        recordingDevices = Array(connectedDeviceIds.length).fill(0);
+        readyDevices = Array(connectedDeviceIds.length).fill(0);
+        finishedDevices = Array(connectedDeviceIds.length).fill(0);
+        console.log(recordingDevices);
         navigator.mediaDevices.getUserMedia({ audio: true })
         .then(function(stream) {
             // Permission granted, stream is available
@@ -478,27 +458,28 @@ socket.on('distanceRecord', function(message)
                     var audioData;
                     recorderNode.port.onmessage = (e) =>
                     {
-                        /*
                         if(recordPermission)
                         {
                             if(e.data.eventType === 'data')
                             {
                                 audioData = e.data.audioBuffer;
                                 pcmBuffer = Float32Concat(pcmBuffer,audioData);
+                                totSamples = e.data.totalSamples;
                             }
-                        } */  
+                        }  
                         if(e.data.eventType === 'started')
                         {
+                            var localtime = Date.now().toString();
                             console.log("Received started command from audio worklet");
                             // Visually show that device has started recording
                             document.body.style.backgroundColor = '0x00FF00'; //FIX
-                            var localtime = Date.now().toString();
                             socket.emit('distanceRecord',{
+                                numDevices: connectedDeviceIds.length,
                                 timedate: message.timedate,
                                 command: 'Started',
                                 device: socket.id,
                                 devinarray: deviceInArray,
-                                localtime: localtime,
+                                localtime: totSamples,
                                 room: roomToken,
                                 master: message.master
                             });
@@ -513,8 +494,18 @@ socket.on('distanceRecord', function(message)
                             document.body.style.backgroundColor = '0x000000';
                             //pcmBuffer = e.data.audio;
                             // Distance measurement script
-                            //shareAudio(pcmBuffer, e.data.timedate);
+                            shareAudio(pcmBuffer, e.data.timedate);
                             source.disconnect(recorderNode);
+                            socket.emit('distanceRecord',{
+                                numDevices: connectedDeviceIds.length,
+                                timedate: message.timedate,
+                                command: 'Stopped',
+                                device: socket.id,
+                                devinarray: deviceInArray,
+                                localtime: totSamples,
+                                room: roomToken,
+                                master: message.master
+                            });
                         }
                     }
                 }
@@ -570,8 +561,10 @@ socket.on('distanceRecord', function(message)
         }
         */
         //Check through devices in current section and note if recording
-        recordingDevices[message.devinarray] = 1;
-        if(recordingDevices.length == connectedDeviceIds.length && recordingDevices.every(value => value === 1))
+        recordingDevices[message.devinarray-1] = 1;
+        var allRecording = recordingDevices.every(value => value === 1);
+        console.log(allRecording);
+        if(recordingDevices.length == connectedDeviceIds.length && allRecording)
         {
             console.log(recordingDevices);
             console.log('All devices are recording');
@@ -587,6 +580,8 @@ socket.on('distanceRecord', function(message)
     if(message.command == 'PRBSPlay')
     {
         //Add additional check to be ready?
+        readyDevices = Array(connectedDeviceIds.length).fill(0);
+        finishedDevices = Array(connectedDeviceIds.length).fill(0);
         console.log('Recieved command to ready PRBS');
         socket.emit('distanceRecord',{
             timedate: message.timedate,
@@ -600,21 +595,20 @@ socket.on('distanceRecord', function(message)
     if(message.command == 'PRBSReady')
     {
         console.log('Recieved PRBSReady');
-        var localtime = Date.now().toString();
         socket.emit('distanceRecord',{
             timedate: message.timedate,
             command: 'Ready',
             device: message.device,
             devinarray: deviceInArray,
             deviceNo: message.deviceNo,
-            localtime: localtime,
+            localtime: totSamples,
             room: roomToken,
             master: message.master
         });
     }
     if(message.command == 'Ready')
     {
-        console.log('Received command to play PRBS');
+        console.log('Received command to play PRBS from device: '+message.devinarray);
         //Check through devices in current section and note if recording
         /*
         for(let i = 0; i < connectedDeviceIds.length; i++)
@@ -625,8 +619,11 @@ socket.on('distanceRecord', function(message)
             }
         }
         */
-        readyDevices[message.devinarray] = 1;
-        if(readyDevices.length == connectedDeviceIds.length && readyDevices.every(value => value === 1))
+        readyDevices[message.devinarray-1] = 1;
+        console.log(readyDevices);
+        var allReady = readyDevices.every(value => value === 1);
+        console.log(allReady);
+        if(readyDevices.length == connectedDeviceIds.length && allReady)
         {
             //
             console.log('Device playing PRBS');
@@ -636,22 +633,79 @@ socket.on('distanceRecord', function(message)
             distanceprbs1.play();
             distanceprbs1.onended = function()
             {
+                finishedDevices = Array(connectedDeviceIds.length).fill(0);
                 console.log('PRBS finished');
-                /*
+                //Log time and continue recording.
                 socket.emit('distanceRecord',{
                     timedate: message.timedate,
-                    command: 'Finished',
-                    deviceNo: deviceInArray,
+                    command: 'PRBSFinished',
+                    device: message.device,
+                    devinarray: deviceInArray,
+                    deviceNo: message.deviceNo,
+                    localtime: totSamples,
                     room: message.room,
                     master: message.master
                 });
+                //If finished PRBS for the last device.
+                if(message.deviceNo == connectedDeviceIds.length)
+                {
+                    console.log('Last device finished');
+                    //Possibly send audio snippets to python script.
+                }
+                /*
+                else
+                {
+                    setTimeout(function()
+					{
+						socket.emit('distanceRecord',{
+                            timedate: message.timedate,
+                            command: 'PRBSPlay',
+                            device: connectedDeviceIds[message.deviceNo],
+                            room: message.room,
+                            master: message.master
+                        });
+					},100);
+                }
                 */
             };
         }
     }
+    if(message.command == 'PRBSFinished')
+    {
+        console.log("Received PRBSFinished from "+message.devinarray);
+        socket.emit('distanceRecord',{
+            timedate: message.timedate,
+            command: 'Finished',
+            device: message.device,
+            devinarray: deviceInArray,
+            deviceNo: message.deviceNo,
+            localtime: totSamples,
+            room: message.room,
+            master: message.master
+        });
+    }
+    if(message.command == 'Finished')
+    {
+        console.log("Received finished from: "+message.devinarray);
+        finishedDevices[message.devinarray-1] = 1;
+        console.log(finishedDevices);
+        var allReady = finishedDevices.every(value => value === 1);
+        console.log(allReady);
+        if(finishedDevices.length == connectedDeviceIds.length && allReady)
+        {
+            socket.emit('distanceRecord',{
+                timedate: message.timedate,
+                command: 'PRBSPlay',
+                device: connectedDeviceIds[message.deviceNo],
+                room: message.room,
+                master: message.master
+            });
+        }
+    }
+    /*
     if(message.command == 'EmitPRBS')
     {
-        /*
+        
         console.log('Device received PRBS command');
         var distanceprbs1 = new Audio('../prbs1.wav');
         distanceprbs1.loop = false;
@@ -670,9 +724,10 @@ socket.on('distanceRecord', function(message)
                 room: message.room
             });
         };
-        */
-    }
-    if(message.command == 'Finished' && deviceInArray === 1)
+        
+    }*/
+    /*
+    if(message.command == 'Finished')
     {
         //Stop recording -> send to python script
         socket.emit('distanceRecord' ,{
@@ -683,26 +738,7 @@ socket.on('distanceRecord', function(message)
             pair: message.pair,
             room: message.room
         });
-        //Finished one pair of devices.
-        console.log('Finished distance measurement for one pair of devices');
-        console.log('Pairs length: '+pairs.length);
-        /*
-        if(message.pair < pairs.length) // If more pairs availabled to measure distance
-        {
-            console.log('Device1: '+(pairs[message.pair+1][0]));
-            console.log('Device2: '+(pairs[message.pair+1][1]));
-            console.log('Starting next pair distance measurement, pair: '+(message.pair+1))
-            const ed = Date.now().toString();
-            socket.emit('distanceRecord',{
-                timedate: ed,
-                device1: pairs[message.pair+1][0],
-                device2: pairs[message.pair+1][1],
-                command: 'Start',
-                pair: message.pair + 1,
-                room: roomToken
-            });
-        }*/
-    }
+    }*/
 });
 
 // **************************************
@@ -764,6 +800,7 @@ function createAudioControls()
     {
         console.log('Start distance calibration button pressed');
         distanceMeasurement();
+        StopRecordButton.disabled = false;
     }
     // Add controls to document
     controlsDiv.appendChild(RunCalibButton);
@@ -779,6 +816,7 @@ function createRecordingStatus()
 
 }
  // Renderer window resizing
+ /*
  window.addEventListener('resize', function()
 {
 	var width = window.innerWidth;
@@ -787,6 +825,7 @@ function createRecordingStatus()
 	camera.aspect = width / height;
 	camera.updateProjectionMatrix();
 });
+
 // Render in extra devices
 function checkDeviceRender()
 {
@@ -961,6 +1000,7 @@ function checkDeviceRender()
     }
     rendering();
 }
+*/
 // Function that converts a string to hex
 const stringToHex = (str) => 
 {
@@ -989,7 +1029,7 @@ function StartRecording()
 function StopRecording()
 {
     //console.log('Stop button pressed');
-    socket.emit('Record',{
+    socket.emit('distanceRecord',{
         room: roomToken,
         command: 'Stop',
         timedate: timedate
@@ -1054,59 +1094,14 @@ function download(filename, data)
 }
 function distanceMeasurement()
 {
-    /*
-    distanceprbs1 = new Audio('../prbs1.wav');
-    distanceprbs2 = new Audio('../prbs16.wav');
-    distanceprbs1.loop = false;
-    distanceprbs2.loop = false;
-    distanceprbs1.volume = 1.0;
-    distanceprbs2.volume = 1.0;
-    */
-    //RoundRobin pairing of devices
-    //const numbers = [1,2,3,4];
-    //pairs = generateRoundRobinPairs(connectedDeviceIds);
-    //console.log(pairs);
     const ed = Date.now().toString();
     socket.emit('distanceRecord',{
         timedate: ed,
         command: 'Start',
         room: roomToken,
-        master: socket.id
+        master: socket.id,
+        numDevices: connectedDeviceIds.length
     });
-    /*
-    socket.emit('distanceRecord',{
-        timedate: ed,
-        device1: pairs[0][0],
-        device2: pairs[0][1],
-        command: 'Start',
-        pair: 1,
-        room: roomToken
-    });*/
-    //console.log(pairs[0][0]);
-    //console.log(pairs[0][1]);
-    //console.log(pairs.length);
-    /*
-    for (let i = 0; i < pairs.length - 1; i++)
-    {
-        var device1 = pairs[i][0];
-        var device2 = pairs[i][1];
-        const ed = Date.now().toString();
-        socket.emit('distanceRecord',{
-            timedate: ed,
-            device1: device1,
-            device2: device2,
-            command: 'Start',
-            pair: i
-        });
-    }*/
-    /*
-    ed = Date.now().toString();
-    socket.emit('recordStart',{
-        timedate: ed,
-        room: roomToken,
-        device: deviceInArray
-    });
-    */
 }
 function generateRoundRobinPairs(numbers) {
     var n = numbers.length;

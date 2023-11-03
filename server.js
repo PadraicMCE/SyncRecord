@@ -8,6 +8,7 @@
 */
 //Using required packages
 const path = require('path');
+// For running remotely, use https
 const https = require('https');
 //const http = require('http');
 const express = require('express');
@@ -33,15 +34,33 @@ const fs = require('fs');
 const { DH_UNABLE_TO_CHECK_GENERATOR } = require('constants');
 const { deserialize } = require('v8');
 
+// Check file access permissions WRITE
+/*
+const filePath = './tmp/'
+fs.access(filePath, fs.constants.W_OK, (err) => {
+	if (err) {
+	  console.error(`No write access to ${filePath}`);
+	} else {
+	  console.log(`Write access granted to ${filePath}`);
+	}
+  });
+  */
 
 const PORT = 443 || process.env.PORT;
+/*
 var https_options = {
 	key: fs.readFileSync("./ssl/privkey.pem"),
     cert: fs.readFileSync("./ssl/cert.pem"),
     ca: fs.readFileSync("./ssl/fullchain.pem")
 };
+*/
+// For local testing a self-signed ssl cert is used:
+var https_options = {
+	key: fs.readFileSync("./ssl/openssl/privkey.pem"),
+    cert: fs.readFileSync("./ssl/openssl/cert.pem")
+};
 
-//const PORT = 8000 || process.env.PORT;
+//const PORT = 80 || process.env.PORT;
 const app = express();
 const server = https.createServer(https_options, app);
 //const server = http.createServer(app);
@@ -51,6 +70,7 @@ const io = socketio(server);
 app.use(express.static('public', { 'extensions': ['html', 'js'], 'content-type': 'application/javascript' }));
 app.use('/build/', express.static(path.join(__dirname, 'node_modules/three/build')));
 app.use('/jsm/', express.static(path.join(__dirname, 'node_modules/three/examples/jsm')));
+app.use('/https/', express.static(path.join(__dirname, 'node_modules/https')));
 //app.use('/stream/', express.static(path.join(__dirname, 'node_modules/socket.io-stream')));
 
 /*
@@ -100,6 +120,14 @@ app.post('/audioShare', (req, res) => {
 	});
 });*/
 
+// Allow downloading of created audio files; New route.
+app.get('/download/:filename', (req, res) => {
+	const filename = req.params.filename;
+	const filepath = path.join(__dirname, '/tmp/', filename);
+  
+	res.sendFile(filepath);
+  });
+
 io.on('connection', socket => {
     socket.emit('message', 'Welcome to server');
 
@@ -135,7 +163,7 @@ io.on('connection', socket => {
 
 	socket.on('audioData', function(message)
 	{
-		console.log('audio data received, size: '+message.audioData.length+' from device: '+message.device);
+		//console.log('audio data received, size: '+message.audioData.length+' from device: '+message.device);
 		// Create a new WaveFile instance
 		//const wav = new WaveFile();
 		// Set the audio format properties
@@ -178,7 +206,7 @@ io.on('connection', socket => {
 			var name = message.timedate;
 			var dev = message.devinarray;
 			var time = message.localtime;
-			fs.appendFile('./tmp/'+message.room+'/'+name+'.txt','startrecord '+dev+': '+time+'\r',
+			fs.appendFile('./public/tmp/'+message.room+'/'+name,'startrecord '+dev+': '+time+'\r',
 			function(err){
 				if(err) throw err;
 				//console.log('file: ./tmp/'+name+'.txt'+'  data: startrecord '+dev+': '+time+'\r');
@@ -220,7 +248,7 @@ io.on('connection', socket => {
 				master: message.master
 			});
 			//Log local time of prbs being played
-			fs.appendFile('./tmp/'+message.room+'/'+message.timedate+'.txt',
+			fs.appendFile('./public/tmp/'+message.room+'/'+message.timedate,
 			'startprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r',
 			function(err){
 				if(err) throw err;
@@ -242,7 +270,7 @@ io.on('connection', socket => {
 			});
 			console.log('stoppedprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime);
 			//Log local time of prbs being played
-			fs.appendFile('./tmp/'+message.room+'/'+message.timedate+'.txt',
+			fs.appendFile('./public/tmp/'+message.room+'/'+message.timedate,
 			'stoppedprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r',
 			function(err){
 				if(err) throw err;
@@ -268,12 +296,12 @@ io.on('connection', socket => {
 				room: message.room,
 				master: message.master
 			});
-			fs.mkdir('./tmp/'+message.room, {recursive: true}, (err) => {
+			fs.mkdir('./public/tmp/'+message.room, {recursive: true}, (err) => {
 				if (err) {
 					console.error('Error creating directory:', err);
 				} else {
 					console.log('Directory created successfully or already exists.');
-					fs.appendFile('./tmp/'+message.room+'/'+message.timedate+'.txt',
+					fs.appendFile('./public/tmp/'+message.room+'/'+message.timedate,
 					'numberdevices '+message.numDevices+'\r',
 					function(err){
 						if(err) throw err;
@@ -285,12 +313,24 @@ io.on('connection', socket => {
 		else if(message.command == 'Stopped')
 		{
 			//Log local time of prbs being played
-			fs.appendFile('./tmp/'+message.room+'/'+message.timedate+'.txt',
+			fs.appendFile('./public/tmp/'+message.room+'/'+message.timedate,
 			'stoppedrecord '+message.devinarray+': '+message.localtime+'\r',
 			function(err){
 				if(err) throw err;
 				//console.log('file: ./tmp/'+name+'.txt'+'  data: stopprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
 			});
+			io.to(message.master).emit('distanceRecord',{
+				timedate: message.timedate,
+				command: 'Stopped',
+				device: message.device,
+				devinarray: message.devinarray,
+				deviceNo: message.deviceNo,
+				localtime: message.localtime,
+				room: message.room,
+				master: message.master
+			});
+			// RUN PYTHON SCRIPT HERE. CHECK AUDIO FILE
+			// Script to synchronise final recordings
 		}
 		else if(message.command == 'PRBSFinished')
 		{
@@ -305,6 +345,115 @@ io.on('connection', socket => {
 				master: message.master
 			});
 		}
+		else if(message.command == 'EndPRBS')
+		{
+			io.to(message.room).emit('distanceRecord',{
+				timedate: message.timedate,
+				command: 'EndPRBS',
+				devinarray: message.devinarray,
+				room: message.room,
+				master: message.master
+			});
+		}
+		else if(message.command == 'PRBSended')
+		{
+			fs.appendFile('./public/tmp/'+message.room+'/'+message.timedate,
+			'endedPRBS '+message.devinarray+': '+message.localtime+'\r',
+			function(err){
+				if(err) throw err;
+				//console.log('file: ./tmp/'+name+'.txt'+'  data: stopprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
+			});
+			io.to(message.master).emit('distanceRecord',{
+				timedate: message.timedate,
+				command: 'LastPRBSCheck',
+				devinarray: message.devinarray,
+				room: message.room,
+				master: message.master
+			});
+		}
+		else if(message.command == 'Sync')
+		{
+			//Run python script to determine synchronisation of audio channels
+			var arguments = [];
+			arguments.push('./public/tmp/'+message.room+'/'+message.timedate);
+			for (let i = 1; i <= message.devinarray; i++)
+			{
+				arguments.push('./public/tmp/'+message.room+'/'+message.timedate+'_'+i+'.pcm');
+			}
+			let options = {
+				mode: 'text',
+				pythonOptions: ['-u'], // get print results in real-time
+				args: arguments
+			  };
+			PythonShell.run('./ReadAudio.py', options).then(messages=>{
+				// No results to print to console.
+				//Print when successful TODO: Add timeout to detect latency errors etc.
+				io.to(message.master).emit('distanceRecord',
+				{
+					timedate: message.timedate,
+					command: 'ReadyForSync',
+					room: message.room,
+					master: message.master
+				});
+			});
+		}
+		else if(message.command == 'SyncAudio')
+		{
+			//Run python script to synchronise audio channels
+			//Run python script to determine synchronisation of audio channels
+			var arguments = [];
+			arguments.push('./public/tmp/'+message.room+'/'+message.timedate+'_sync');
+			for (let i = 1; i <= message.devices; i++)
+			{
+				arguments.push('./public/tmp/'+message.room+'/'+message.timedate+'_'+i+'.pcm');
+			}
+			//console.log("Python arguments: "+ arguments);
+			let options = {
+				mode: 'text',
+				pythonOptions: ['-u'], // get print results in real-time
+				args: arguments,
+			  };
+			
+			  const pythonScript = 'SyncAudio.py';
+			const pyshell = new PythonShell(pythonScript, options);
+			/*
+			// Set up event listeners to capture stdout and stderr
+			pyshell.on('message', (message) => {
+				console.log(`Python script stdout: ${message}`);
+			});
+			
+			pyshell.on('stderr', (message) => {
+				console.error(`Python script stderr: ${message}`);
+			});
+			*/
+			// Optional: Handle script termination
+			pyshell.end((err, code, signal) => {
+				if (err) {
+				console.error('Python script execution failed:', err);
+				} else {
+				console.log(`Python script execution completed with code ${code}, signal ${signal}`);
+				// Allow files to be downloaded
+				const audioFile = './tmp/'+message.room+'/'+message.timedate+'_sync.wav';
+				io.to(message.master).emit('distanceRecord',
+				{
+					timedate: message.timedate,
+					command: 'ReadyForDownload',
+					room: message.room,
+					file: audioFile
+				});
+				}
+				// Commands to send download links to master device
+			});
+			
+			/*
+			PythonShell.run('SyncAudio.py', options).then(messages=>{
+				// No results to print to console.
+				//Print when successful TODO: Add timeout to detect latency errors etc.
+				// Check what message; Error, complete?
+				//console.log(messages);
+			});*/
+			
+		}
 	});
 	
 
@@ -318,13 +467,13 @@ io.of("/").adapter.on("join-room", (room, id) => {
 });
 
 function saveAudioToFile(session, filename, data) {
-	const filePath = './tmp/'+session+'/'+filename+'.pcm';
+	const filePath = './public/tmp/'+session+'/'+filename+'.pcm';
 	// Append the data to the file
 	fs.appendFile(filePath, data, (err) => {
 	  if (err) {
 		console.error('Error saving audio:', err);
 	  } else {
-		console.log('Audio data saved to file: '+filePath);
+		//console.log('Audio data saved to file: '+filePath);
 	  }
 	});
   }

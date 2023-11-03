@@ -3,14 +3,17 @@
 // NOTE: Recording PCM for positioning  - use AudioWorklet.
 //       Recording final audio to .wav - use MediaRecorder. Possibly convert from AudioWorklet raw data.
 
-import * as THREE from 'three';
+//import * as THREE from 'three';
+/*
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
+*/
 //import Stats from 'three/examples/jsm/libs/stats.module'
 //import { GUI } from 'three/examples/jsm/libs/dat.gui.module'
+//import { https }from 'https';
 
 //Font for text in scene
 //const fontLoader = new FontLoader();
@@ -37,6 +40,7 @@ var connectedDeviceIds = [];
 var recordingDevices = [];
 var readyDevices = [];
 var finishedDevices = [];
+var stoppedDevices = [];
 // Time/Date for recording labels
 var timedate;
 // Current number of samples in recording
@@ -52,50 +56,91 @@ var globalStream;
 var recordPermission = false;
 var source;
 var recorderNode;
-// Variables for PRBS distance measurement
-var distanceprbs1;
-var distanceprbs2;
-var pairs;
-// Temp flag variables for device recording
-var dev1Rec = false;
-var dev2Rec = false;
+// Variables for audio channel synchronisation
+var readyToSync = false;
+var downloadLinksContainer;
 // **************************************
 // ************ Interface *************** //
 // **************************************
+// Banner at top
+// Create the necessary HTML elements
+/*
+const body = document.body;
+const bannerContainer = document.createElement("div");
+const objectElement = document.createElement("object");
+// Set IDs for styling and manipulation
+bannerContainer.id = "bannerContainer";
+objectElement.type = "image/svg+xml";
+objectElement.data = "./banner.svg";
+objectElement.textContent = "Your browser does not support SVG";
+// Append elements to the body
+bannerContainer.appendChild(objectElement);
+body.appendChild(bannerContainer);
+// Apply styles to the body for centering
+body.style.margin = "0";
+body.style.justifyContent = "center";
+body.style.alignItems = "center";
+//body.style.minHeight = "100vh";
+body.style.backgroundColor = "#000000";
+// Apply styles to the banner container
+bannerContainer.style.width = "100%";
+*/
+
 // User interface
-var noticeDiv = document.getElementById('div');
-noticeDiv.innerHTML += '<p style="color:white;font-size:40px;">Ad Hoc Microphone Array</p>';
+//var noticeDiv = document.getElementById('div');
+
+//noticeDiv.innerHTML = `<object type="image/svg+xml" data="your-image.svg" width="100%" height="auto"></object>`;
+//noticeDiv.innerHTML += '<p style="color:white;font-size:40px;">Ad Hoc Microphone Array</p>';
+var screenWidth = window.innerWidth;
 // Div for control buttons
 var createRoomDiv = document.createElement("div");
 var createRoomButton = document.createElement("BUTTON");
 createRoomButton.innerHTML = "Create Array";
 createRoomButton.setAttribute("class","createRoomButton");
 createRoomDiv.appendChild(createRoomButton);
-createRoomButton.style.width = '400px';
-createRoomButton.style.height = '200px';
-createRoomButton.style.fontSize = '50px';
+createRoomButton.style.width = 0.25*screenWidth+'px';
+createRoomButton.style.height = 0.25*screenWidth+'px';
+createRoomButton.style.fontSize = 0.05*screenWidth+'px';
+createRoomButton.style.margin = 0.01*screenWidth+'px';
+createRoomButton.style.display = 'inline-block';
+createRoomButton.style.backgroundColor = 'rgb(0, 76, 108)';
+createRoomButton.style.color = 'rgb(255,255,255)';
 //
-var joinRoomDiv = document.createElement("div");
+createRoomDiv.style.display = 'flex';
+createRoomDiv.style.alignItems = 'center';
+createRoomDiv.style.justifyContent = 'center';
+//var joinRoomDiv = document.createElement("div");
 var joinRoomButton = document.createElement("BUTTON");
 joinRoomButton.setAttribute("class","joinRoomButton");
 joinRoomButton.innerHTML = "Join Array";
-joinRoomDiv.appendChild(joinRoomButton);
-joinRoomButton.style.width = '400px';
-joinRoomButton.style.height = '200px';
-joinRoomButton.style.fontSize = '50px';
+//joinRoomDiv.appendChild(joinRoomButton);
+joinRoomButton.style.width = 0.25*screenWidth+'px';
+joinRoomButton.style.height = 0.25*screenWidth+'px';
+joinRoomButton.style.fontSize = 0.05*screenWidth+'px';
+joinRoomButton.style.margin = 0.01*screenWidth+'px';
+joinRoomButton.style.display = 'inline-block';
+joinRoomButton.style.backgroundColor = 'rgb(0, 76, 108)';
+joinRoomButton.style.color = 'rgb(255,255,255)';
 //Session ID (Socket.io room)
-var createSessionTokenDiv = document.createElement("div");
-var DeviceInArrayDiv = document.createElement("div");
-createSessionTokenDiv.style.fontSize = '50px';
-createSessionTokenDiv.style.color = 'white';
-DeviceInArrayDiv.style.fontSize = '50px';
-DeviceInArrayDiv.style.color = 'white';
+//var createSessionTokenDiv = document.createElement("div");
+//var DeviceInArrayDiv = document.createElement("div");
+
+//createSessionTokenDiv.style.fontSize = '50px';
+//createSessionTokenDiv.style.color = 'white';
+//createSessionTokenDiv.style.display = 'inline-block';
+
+//DeviceInArrayDiv.style.fontSize = '50px';
+//DeviceInArrayDiv.style.color = 'white';
+//DeviceInArrayDiv.style.display = 'inline-block';
+//DeviceInArrayDiv.style.textAlign = 'center';
 
 // Add all div to main webpage
 document.body.appendChild(createRoomDiv);
-createRoomDiv.appendChild(createSessionTokenDiv);
-document.body.appendChild(joinRoomDiv);
-document.body.appendChild(DeviceInArrayDiv);
+//createRoomDiv.appendChild(createSessionTokenDiv);
+createRoomDiv.appendChild(joinRoomButton);
+createRoomDiv.style.textAlign ='center';
+//document.body.appendChild(joinRoomDiv);
+//document.body.appendChild(DeviceInArrayDiv);
 
 //Get microphone access
 navigator.mediaDevices.getUserMedia({ audio: true })
@@ -183,6 +228,7 @@ var controlsDiv;
 var RunCalibButton = document.createElement("BUTTON");
 var StartRecordButton = document.createElement("BUTTON");
 var StopRecordButton = document.createElement("BUTTON");
+var EndPRBSButton = document.createElement("BUTTON");
 
 // Create room clicked (device assigned as master of that array)
 // A random token is created.
@@ -191,14 +237,18 @@ createRoomButton.onclick = function()
 {
     var token = rand();
     if(debugprint) console.log(token);
-    createSessionTokenDiv.innerHTML = "Array Token: "+token;
+    createRoomButton.innerHTML = "Array Token:<br>"+token;
     roomToken = token;
     master = true;
     socket.emit('joinRoom',roomToken);
     // Create recording controls buttons for master device
     createAudioControls();
     createRoomButton.disabled = true;
+    createRoomButton.style.backgroundColor = 'rgb(50, 50, 50)';
+    createRoomButton.style.color = 'rgb(255,255,255)';
     joinRoomButton.disabled = true;
+    joinRoomButton.style.backgroundColor = 'rgb(50, 50, 50)';
+    joinRoomButton.style.color = 'rgb(50,50,50)';
 }
 // Join array button pressed, user asked for array token.
 // Device joins as client to the session entered.
@@ -207,11 +257,15 @@ joinRoomButton.onclick = function()
     // Prompt the user for input and store it in a variable
     master = false;
     const sessionToken = prompt('Enter Array Token:');
-    createSessionTokenDiv.innerHTML = "Array Token: "+sessionToken;
+    createRoomButton.innerHTML = "Array Token:<br>"+sessionToken;
     roomToken = sessionToken;
     socket.emit('joinRoom',roomToken);
     joinRoomButton.disabled = true;
+    joinRoomButton.style.backgroundColor = 'rgb(50, 50, 50)';
+    joinRoomButton.style.color = 'rgb(50,50,50)';
     createRoomButton.disabled = true;
+    createRoomButton.style.backgroundColor = 'rgb(50, 50, 50)';
+    createRoomButton.style.color = 'rgb(255,255,255)';
 }
 
 // **************************************
@@ -244,7 +298,9 @@ socket.on('joinedRoom', function(message)
 socket.on('DevNumAssigned', message =>
 {
     if(debugprint) console.log(message);
-    DeviceInArrayDiv.innerHTML = "Device number assigned: "+message;
+    joinRoomButton.innerHTML = "Device:<br>"+message;
+    joinRoomButton.style.color = 'rgb(255,255,255)';
+    //DeviceInArrayDiv.innerHTML = "Device number assigned: "+message;
     // Identify the device recording in batch (and room token)
     deviceInArray = message;
     console.log('Device in array: '+deviceInArray);
@@ -424,7 +480,7 @@ socket.on('audioData', function(message)
 
 socket.on('distanceRecord', function(message)
 {
-    //console.log('Received "distanceRecord" with command: '+message.command+' from: '+message.device);
+    console.log('Received "distanceRecord" with command: '+message.command+' from: '+message.devinarray);
     timedate = message.timedate;
     if(message.command == 'Start')
     {
@@ -463,7 +519,13 @@ socket.on('distanceRecord', function(message)
                             if(e.data.eventType === 'data')
                             {
                                 audioData = e.data.audioBuffer;
-                                pcmBuffer = Float32Concat(pcmBuffer,audioData);
+                                //pcmBuffer = Float32Concat(pcmBuffer,audioData);
+                                socket.emit('audioData',{ 
+                                    audioData: audioData,
+                                    timedate: timedate,
+                                    room: roomToken,
+                                    device: deviceInArray},
+                                    { binary: true });
                                 totSamples = e.data.totalSamples;
                             }
                         }  
@@ -488,13 +550,11 @@ socket.on('distanceRecord', function(message)
                         {
                             console.log("Received stopped command from audio worklet, with timedate: "+e.data.timedate);
                             recordPermission = false;
-                            dev1Rec = false;
-                            dev2Rec = false;
                             // Visually show that device has started recording
                             document.body.style.backgroundColor = '0x000000';
                             //pcmBuffer = e.data.audio;
                             // Distance measurement script
-                            shareAudio(pcmBuffer, e.data.timedate);
+                            //shareAudio(pcmBuffer, e.data.timedate);
                             source.disconnect(recorderNode);
                             socket.emit('distanceRecord',{
                                 numDevices: connectedDeviceIds.length,
@@ -577,11 +637,35 @@ socket.on('distanceRecord', function(message)
             });
         }
     }
+    if(message.command == 'Stopped')
+    {
+        //Check through devices in current section and note if stopped
+        stoppedDevices[message.devinarray-1] = 1;
+        var allStopped = stoppedDevices.every(value => value === 1);
+        console.log(allStopped);
+        if(stoppedDevices.length == connectedDeviceIds.length && allStopped)
+        {
+            console.log(stoppedDevices);
+            console.log('All devices Stopped Recording');
+            if(readyToSync == true)
+            {
+                socket.emit('distanceRecord',{
+                    timedate: message.timedate,
+                    command: 'SyncAudio',
+                    devices: connectedDeviceIds.length,
+                    room: message.room,
+                    master: message.master,
+                    devices: connectedDeviceIds.length
+                });
+            }
+        }
+    }
     if(message.command == 'PRBSPlay')
     {
         //Add additional check to be ready?
         readyDevices = Array(connectedDeviceIds.length).fill(0);
         finishedDevices = Array(connectedDeviceIds.length).fill(0);
+        stoppedDevices = Array(connectedDeviceIds.length).fill(0);
         console.log('Recieved command to ready PRBS');
         socket.emit('distanceRecord',{
             timedate: message.timedate,
@@ -688,9 +772,35 @@ socket.on('distanceRecord', function(message)
     {
         console.log("Received finished from: "+message.devinarray);
         finishedDevices[message.devinarray-1] = 1;
-        console.log(finishedDevices);
+        //.log(finishedDevices);
         var allReady = finishedDevices.every(value => value === 1);
-        console.log(allReady);
+        //console.log(allReady);
+        //console.log(message.deviceinarray);
+        //console.log(connectedDeviceIds.length);
+        
+        if(message.deviceNo == connectedDeviceIds.length && allReady)
+        {
+            console.log("Will run python script to determine sync");
+            setTimeout(function() {
+                socket.emit('distanceRecord',{
+                    timedate: message.timedate,
+                    command: 'Sync',
+                    devinarray: deviceInArray,
+                    room: roomToken,
+                    master: message.master
+                });
+              }, 1000); // Run the function after 3 seconds
+              
+            /*
+            socket.emit('distanceRecord',{
+                timedate: message.timedate,
+                command: 'EndPRBS',
+                devinarray: deviceInArray,
+                room: roomToken,
+                master: message.master
+            });
+            */
+        } 
         if(finishedDevices.length == connectedDeviceIds.length && allReady)
         {
             socket.emit('distanceRecord',{
@@ -701,6 +811,79 @@ socket.on('distanceRecord', function(message)
                 master: message.master
             });
         }
+    }
+    if(message.command == 'EndPRBS')
+    {
+        console.log(deviceInArray);
+        console.log(connectedDeviceIds.length);
+        if(deviceInArray === connectedDeviceIds.length)
+        {
+            socket.emit('distanceRecord',{
+                timedate: message.timedate,
+                command: 'PRBSended',
+                devinarray: deviceInArray,
+                localtime: totSamples,
+                room: message.room,
+                master: message.master
+            });
+        }
+    }
+    if(message.command == 'LastPRBSCheck')
+    {  
+        DevicesPRBSEnded[message.devinarray-1] = 1;
+        //console.log(DevicesPRBSEnded);
+        var allDone = DevicesPRBSEnded.every(value => value === 1);
+        //console.log(allDone);
+        if(DevicesPRBSEnded.length == connectedDeviceIds.length && allDone)
+            socket.emit('distanceRecord',
+            {
+                timedate: message.timedate,
+                command: 'Sync',
+                devinarray: deviceInArray,
+                localtime: totSamples,
+                room: message.room,
+                master: message.master
+            });
+    }
+    if(message.command == 'ReadyForSync')
+    {
+        readyToSync = true;
+        console.log(message.command);
+    }
+    if(message.command == 'ReadyForDownload')
+    {
+        /*
+        const filename = message.audioFile;
+        const httpsAgent = new https.Agent({
+            rejectUnauthorized: false,
+        });
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', `https://192.168.11.239/download/${filename}`, true, null, httpsAgent);
+        xhr.responseType = 'blob';
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+              const blob = xhr.response;
+              // Create a download link for the file.
+              const downloadLink = document.createElement('a');
+              downloadLink.href = URL.createObjectURL(blob);
+              downloadLink.download = filename;
+          
+              // Append the download link to the DOM.
+              //document.body.appendChild(downloadLink);
+              downloadLinksContainer.appendChild(downloadLink);
+              // Click the download link to start downloading the file.
+              //downloadLink.click();
+            }
+          };
+        xhr.send();
+        */
+        
+        const downloadLink = document.createElement('a');
+        downloadLink.href = message.file;
+        downloadLink.download = 'multi_channel_audio.wav';
+        downloadLink.textContent = message.timedate;
+        downloadLinksContainer.appendChild(downloadLink);
+        
     }
     /*
     if(message.command == 'EmitPRBS')
@@ -761,35 +944,55 @@ function createAudioControls()
 {
     // Controls for controlling recording from master device
     controlsDiv = document.createElement("div");
+    controlsDiv.style.display = 'flex';
+    controlsDiv.style.alignItems = 'center';
+    controlsDiv.style.justifyContent = 'center';
     RunCalibButton = document.createElement("BUTTON");
-    StartRecordButton = document.createElement("BUTTON");
+    //StartRecordButton = document.createElement("BUTTON");
     StopRecordButton = document.createElement("BUTTON");
-    RunCalibButton.innerHTML = "Run Position Calibration";
+
+    RunCalibButton.innerHTML = "Start Synced Recording";
     RunCalibButton.setAttribute("class","RunCalibButton");
-    RunCalibButton.style.width = '400px';
-    RunCalibButton.style.height = '200px';
-    RunCalibButton.style.fontSize = '50px';
+    RunCalibButton.style.width = 0.25*screenWidth+'px';
+    RunCalibButton.style.height = 0.25*screenWidth+'px';
+    RunCalibButton.style.fontSize = 0.05*screenWidth+'px';
+    RunCalibButton.style.margin = 0.01*screenWidth+'px';
+    RunCalibButton.style.display = 'inline-block';
+    RunCalibButton.style.backgroundColor = 'rgb(0, 76, 108)';
+    RunCalibButton.style.color = 'rgb(255,255,255)';
     // Disable until calibration complete
+    /*
     StartRecordButton.innerHTML = "Start Recording";
     //StartRecordButton.setAttribute("class","StartRecordButton");
     StartRecordButton.id = "StartRecordButton";
     StartRecordButton.style.width = '400px';
     StartRecordButton.style.height = '200px';
     StartRecordButton.style.fontSize = '50px';
+    */
     StopRecordButton.innerHTML = "Stop Recording";
     //StopRecordButton.setAttribute("class","StopRecordButton");
     StopRecordButton.id = "StopRecordButton";
-    StopRecordButton.style.width = '400px';
-    StopRecordButton.style.height = '200px';
-    StopRecordButton.style.fontSize = '50px';
+    StopRecordButton.style.width = 0.25*screenWidth+'px';
+    StopRecordButton.style.height = 0.25*screenWidth+'px';
+    StopRecordButton.style.fontSize = 0.05*screenWidth+'px';
+    StopRecordButton.style.margin = 0.01*screenWidth+'px';
     StopRecordButton.disabled = true;
+    StopRecordButton.style.display = 'inline-block';
+    StopRecordButton.style.backgroundColor = 'rgb(0, 76, 108)';
+    StopRecordButton.style.color = 'rgb(255,255,255)';
+
+    /* ************************************************************ */
+    /* ***    Container for audio file downloading              *** */
+    downloadLinksContainer = document.createElement("div");
+    downloadLinksContainer.id = "downloadsDiv";
     // Functions for buttons
+    /*
     StartRecordButton.onclick = function()
     {
         StartRecording();
         StartRecordButton.disabled = true;
         StopRecordButton.disabled = false;
-    }
+    }*/
     StopRecordButton.onclick = function()
     {
         StopRecording();
@@ -801,12 +1004,15 @@ function createAudioControls()
         console.log('Start distance calibration button pressed');
         distanceMeasurement();
         StopRecordButton.disabled = false;
+        readyToSync = false;
     }
     // Add controls to document
     controlsDiv.appendChild(RunCalibButton);
-    controlsDiv.appendChild(StartRecordButton);
+    //controlsDiv.appendChild(StartRecordButton);
     controlsDiv.appendChild(StopRecordButton);
+    //controlsDiv.appendChild(EndPRBSButton); // ********************************
     document.body.appendChild(controlsDiv);
+    document.body.appendChild(downloadLinksContainer);
     
 }
 // Function called to create the recording status of local device.
@@ -1051,7 +1257,7 @@ function Float32Concat(first, second)
 // Function to send the captured Audio to all devices in the room, through the server.
 function shareAudio(audioData, timedate)
 {
-    console.log("Sharing audio data with other devices, filesize: "+audioData.length);
+    //console.log("Sharing audio data with other devices, filesize: "+audioData.length);
     //console.log('ShareAudio function with timedate: '+timedate);
     
     socket.emit('audioData',{ 
@@ -1103,7 +1309,8 @@ function distanceMeasurement()
         numDevices: connectedDeviceIds.length
     });
 }
-function generateRoundRobinPairs(numbers) {
+function generateRoundRobinPairs(numbers) 
+{
     var n = numbers.length;
     console.log('n: '+n);
     const pairs = []; 
@@ -1125,4 +1332,17 @@ function generateRoundRobinPairs(numbers) {
     }
     return pairs;
 }
-  
+
+// ********* FOR RECORDING TESTING, REMOVE BEFORE DEPLOYMENT ********** //
+function EndedPRBS()
+{
+    /*
+    socket.emit('distanceRecord',{
+        timedate: timedate,
+        command: 'EndPRBS',
+        devinarray: deviceInArray,
+        localtime: totSamples,
+        room: roomToken,
+    });
+    */
+}

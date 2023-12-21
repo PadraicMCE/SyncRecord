@@ -1,24 +1,7 @@
-// TODO: Add recordings saved from each recording session. Naming?? DateTime and array token?
-//       Socket id static for each user.
-// NOTE: Recording PCM for positioning  - use AudioWorklet.
-//       Recording final audio to .wav - use MediaRecorder. Possibly convert from AudioWorklet raw data.
-
-//import * as THREE from 'three';
-/*
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls';
-import { FontLoader } from 'three/examples/jsm/loaders/FontLoader';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
-import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
-*/
-//import Stats from 'three/examples/jsm/libs/stats.module'
-//import { GUI } from 'three/examples/jsm/libs/dat.gui.module'
-//import { https }from 'https';
-
-//Font for text in scene
-//const fontLoader = new FontLoader();
-//Lines
-var points = [];
+/* ************************************
+    Written by: Padraic McEvoy
+    Last updated 21/12/2023
+************************************ */
 // Socketio
 const socket = io();
 
@@ -48,8 +31,6 @@ var totSamples = 0;
 // AudioWorklet variables
 var context;
 var audioSource;
-// Buffer to hold recorded audio data before sending to server / devices
-//var pcmBuffer;
 var recording = false;
 // Variable for global audio stream access
 var globalStream;
@@ -62,35 +43,6 @@ var downloadLinksContainer;
 // **************************************
 // ************ Interface *************** //
 // **************************************
-// Banner at top
-// Create the necessary HTML elements
-/*
-const body = document.body;
-const bannerContainer = document.createElement("div");
-const objectElement = document.createElement("object");
-// Set IDs for styling and manipulation
-bannerContainer.id = "bannerContainer";
-objectElement.type = "image/svg+xml";
-objectElement.data = "./banner.svg";
-objectElement.textContent = "Your browser does not support SVG";
-// Append elements to the body
-bannerContainer.appendChild(objectElement);
-body.appendChild(bannerContainer);
-// Apply styles to the body for centering
-body.style.margin = "0";
-body.style.justifyContent = "center";
-body.style.alignItems = "center";
-//body.style.minHeight = "100vh";
-body.style.backgroundColor = "#000000";
-// Apply styles to the banner container
-bannerContainer.style.width = "100%";
-*/
-
-// User interface
-//var noticeDiv = document.getElementById('div');
-
-//noticeDiv.innerHTML = `<object type="image/svg+xml" data="your-image.svg" width="100%" height="auto"></object>`;
-//noticeDiv.innerHTML += '<p style="color:white;font-size:40px;">Ad Hoc Microphone Array</p>';
 var screenWidth = window.innerWidth;
 // Div for control buttons
 var createRoomDiv = document.createElement("div");
@@ -109,11 +61,9 @@ createRoomButton.style.color = 'rgb(255,255,255)';
 createRoomDiv.style.display = 'flex';
 createRoomDiv.style.alignItems = 'center';
 createRoomDiv.style.justifyContent = 'center';
-//var joinRoomDiv = document.createElement("div");
 var joinRoomButton = document.createElement("BUTTON");
 joinRoomButton.setAttribute("class","joinRoomButton");
 joinRoomButton.innerHTML = "Join Array";
-//joinRoomDiv.appendChild(joinRoomButton);
 joinRoomButton.style.width = 0.25*screenWidth+'px';
 joinRoomButton.style.height = 0.25*screenWidth+'px';
 joinRoomButton.style.fontSize = 0.05*screenWidth+'px';
@@ -121,26 +71,11 @@ joinRoomButton.style.margin = 0.01*screenWidth+'px';
 joinRoomButton.style.display = 'inline-block';
 joinRoomButton.style.backgroundColor = 'rgb(0, 76, 108)';
 joinRoomButton.style.color = 'rgb(255,255,255)';
-//Session ID (Socket.io room)
-//var createSessionTokenDiv = document.createElement("div");
-//var DeviceInArrayDiv = document.createElement("div");
-
-//createSessionTokenDiv.style.fontSize = '50px';
-//createSessionTokenDiv.style.color = 'white';
-//createSessionTokenDiv.style.display = 'inline-block';
-
-//DeviceInArrayDiv.style.fontSize = '50px';
-//DeviceInArrayDiv.style.color = 'white';
-//DeviceInArrayDiv.style.display = 'inline-block';
-//DeviceInArrayDiv.style.textAlign = 'center';
 
 // Add all div to main webpage
 document.body.appendChild(createRoomDiv);
-//createRoomDiv.appendChild(createSessionTokenDiv);
 createRoomDiv.appendChild(joinRoomButton);
 createRoomDiv.style.textAlign ='center';
-//document.body.appendChild(joinRoomDiv);
-//document.body.appendChild(DeviceInArrayDiv);
 
 //Get microphone access
 navigator.mediaDevices.getUserMedia({ audio: true })
@@ -151,74 +86,7 @@ navigator.mediaDevices.getUserMedia({ audio: true })
     // Permission denied or error occurred
     console.error('Error accessing microphone:', error);
 });
-// **************************************
-// ************** WEBGL ***************** //
-// **************************************
-// 3D Scene
-/*
-const scene = new THREE.Scene();
-// Camera
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth*0.75 / window.innerHeight*0.75, 0.1, 1000);
-camera.position.set(0.5, 0.5, 0.5);
-camera.lookAt(0, 0, 0);
-// Renderer
-const renderer = new THREE.WebGLRenderer({antialias: true});
-renderer.setClearColor("#233143");
-renderer.setSize(window.innerWidth*0.75, window.innerHeight*0.75);
-document.body.appendChild(renderer.domElement);
-*/
-// Responsive to window size changes
-/*
-window.addEventListener('resize', () => {
-    renderer.setSize(window.innerWidth*0.75, window.innerHeight*0.75);
-    renderer.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-});
-*/
-// Create Box
-/*
-const phoneGeometry = new THREE.BoxGeometry(0.1, 0.05, 0.0025);
-var phoneMaterial1 = new THREE.MeshLambertMaterial({color: 0x000000});
-var phoneMaterial2 = new THREE.MeshLambertMaterial({color: 0x000000});
-var phoneMaterial3 = new THREE.MeshLambertMaterial({color: 0x000000});
-var phoneMaterial4 = new THREE.MeshLambertMaterial({color: 0x000000});
-const phoneMesh1 = new THREE.Mesh(phoneGeometry, phoneMaterial1);
-const phoneMesh2 = new THREE.Mesh(phoneGeometry, phoneMaterial2);
-const phoneMesh3 = new THREE.Mesh(phoneGeometry, phoneMaterial3);
-const phoneMesh4 = new THREE.Mesh(phoneGeometry, phoneMaterial4);
-*/
-/*
-scene.add(phoneMesh1);
-scene.add(phoneMesh2);
-scene.add(phoneMesh3);
-phoneMesh1.position.set(0, 0, 0); // Optional, 0,0,0 is the default
-phoneMesh2.position.set(0.5, 0, 0); // Optional, 0,0,0 is the default
-phoneMesh3.position.set(1, 0, 0); // Optional, 0,0,0 is the default
-*/
-// Light
-/*
-const light = new THREE.PointLight(0xFFFFFF, 1, 100);
-light.position.set(5, 5, 5);
-scene.add(light);
-// Set up ambient lights
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-scene.add(ambientLight)
-//Trackball Controls for Camera 
-//const controls = new OrbitControls( camera, renderer.domElement );
-const controls = new TrackballControls(camera, renderer.domElement); 
-controls.rotateSpeed = 4;
-controls.dynamicDampingFactor = 0.15;
-// function
-const rendering = function() {
-    requestAnimationFrame(rendering);    // Constantly rotate box
-    //scene.rotation.z -= 0.005;
-    //scene.rotation.x -= 0.01;    
-    renderer.render(scene, camera);
-    // Update trackball controls
-    controls.update();
-}
-rendering();
-*/
+
 // **************************************
 // ************** Controls ************** //
 // **************************************
@@ -300,7 +168,6 @@ socket.on('DevNumAssigned', message =>
     if(debugprint) console.log(message);
     joinRoomButton.innerHTML = "Device:<br>"+message;
     joinRoomButton.style.color = 'rgb(255,255,255)';
-    //DeviceInArrayDiv.innerHTML = "Device number assigned: "+message;
     // Identify the device recording in batch (and room token)
     deviceInArray = message;
     console.log('Device in array: '+deviceInArray);
@@ -311,7 +178,6 @@ socket.on('Number of Devices', function(message)
     {
         numDevices = message.device;
     }
-    //checkDeviceRender();
 });
 socket.on('deviceIds', ids =>
 {
@@ -325,8 +191,6 @@ socket.on('Record', function(message)
 {
     if(message.command == 'Start')
     {
-        //console.log("Received Record Start command from server");
-        //console.log(message.command);
         // Get timedate from master device
         timedate = message.timedate;
         // Get medai stream permission
@@ -336,12 +200,9 @@ socket.on('Record', function(message)
             // Function for passing stream to global variable
             recordPermission = true;
             context = new AudioContext({latencyHint: "interactive", sampleRate: 48000});
-            //context.samplerate = 48000;
             source = context.createMediaStreamSource(stream);
             context.audioWorklet.addModule('./js/Record.js').then(() =>
             {
-                // Additional function?
-                //console.log("audioWorklet has been set up");
                 if(recordPermission)
                 {
                     // Start recording on local device
@@ -365,17 +226,14 @@ socket.on('Record', function(message)
                         }   
                         if(e.data.eventType === 'started')
                         {
-                            //console.log("Received started command from audio worklet");
                             // Visually show that device has started recording
                             document.body.style.backgroundColor = '0x00FF00';
                         }
                         if(e.data.eventType === 'stopped')
                         {
-                            //console.log("Received stopped command from audio worklet, with timedate: "+e.data.timedate);
                             recordPermission = false;
                             // Visually show that device has started recording
                             document.body.style.backgroundColor = '0x000000';
-                            //pcmBuffer = e.data.audio;
                             shareAudio(pcmBuffer, e.data.timedate);
                         }
                     }
@@ -389,7 +247,6 @@ socket.on('Record', function(message)
     }
     if(message.command == 'Stop')
     {
-        //console.log("Received stop command from server");
         console.log(message.command);
         try {
             //Stop recording on local device
@@ -405,18 +262,6 @@ socket.on('Record', function(message)
 
 socket.on('audioData', function(message)
 {
-    //console.log("Received audio data from other device");
-    // Create download link for audio from each device
-    /*
-    var blob = new Blob([message.audioData]);
-    var link = document.createElement('a');
-    link.href = window.URL.createObjectURL(blob);
-    var filename = message.timedate+"_"+message.device+".pcm";
-    console.log(filename);
-    link.download = filename; */
-    //console.log("download link created");
-    //link.click(); //Automatically download the audiofile
-
     // UI for each audio received
     const soundClips = document.createElement('section');
     const clipContainer = document.createElement('article');
@@ -453,20 +298,17 @@ socket.on('audioData', function(message)
     
     deleteButton.onclick = function(e)
     {
-        //console.log("Delete button pressed");
         let evtTgt = e.target;
         evtTgt.parentNode.parentNode.removeChild(evtTgt.parentNode);
     }
     
     downloadButton.onclick = function(e)
     {
-        //console.log("Download button pressed");
         download(filename,audioURL);
     }
     
     clipLabel.onclick = function() 
     {
-        //console.log("Clip name clicked");
         const existingName = clipLabel.textContent;
         const newClipName = prompt('Enter a new name for sound clip?');
         if (newClipName === null)
@@ -495,12 +337,9 @@ socket.on('distanceRecord', function(message)
             // Function for passing stream to global variable
             recordPermission = true;
             context = new AudioContext({latencyHint: "interactive", sampleRate: 48000}); // Select sample rate?
-            //context.samplerate = 48000;
             source = context.createMediaStreamSource(stream);
             context.audioWorklet.addModule('./js/Record.js').then(() =>
             {
-                // Additional function?
-                //console.log("audioWorklet has been set up");
                 if(recordPermission)
                 {
                     // Start recording on local device
@@ -519,7 +358,6 @@ socket.on('distanceRecord', function(message)
                             if(e.data.eventType === 'data')
                             {
                                 audioData = e.data.audioBuffer;
-                                //pcmBuffer = Float32Concat(pcmBuffer,audioData);
                                 socket.emit('audioData',{ 
                                     audioData: audioData,
                                     timedate: timedate,
@@ -552,9 +390,7 @@ socket.on('distanceRecord', function(message)
                             recordPermission = false;
                             // Visually show that device has started recording
                             document.body.style.backgroundColor = '0x000000';
-                            //pcmBuffer = e.data.audio;
                             // Distance measurement script
-                            //shareAudio(pcmBuffer, e.data.timedate);
                             source.disconnect(recorderNode);
                             socket.emit('distanceRecord',{
                                 numDevices: connectedDeviceIds.length,
@@ -588,38 +424,10 @@ socket.on('distanceRecord', function(message)
             });
         } catch(error){
             console.log("Error sending stop command to AudioWorklet");
-            // Add additional error handling
         }
     }
     if(message.command == 'Started')
     {
-        /*
-        console.log('Started command received: '+message.device+' at: '+deviceInArray);
-        if(message.device == pairs[message.pair-1][0]) 
-        {
-            console.log('Device 1 started recording');
-            dev1Rec = true;
-        }
-        if(message.device == pairs[message.pair-1][1])
-        {
-            console.log('Device 2 started recording');
-            dev2Rec = true;
-        }
-        //if(message.pair < pairs)
-        if(dev1Rec == true && dev2Rec == true)
-        {
-            console.log('Both devices in pair are recording');
-            socket.emit('distanceRecord',{
-                timedate: message.timedate,
-                device1: message.device1,
-                device2: message.device2,
-                command: 'EmitPRBS',
-                device: 1,
-                pair: message.pair,
-                room: message.room
-            });
-        }
-        */
         //Check through devices in current section and note if recording
         recordingDevices[message.devinarray-1] = 1;
         var allRecording = recordingDevices.every(value => value === 1);
@@ -662,7 +470,6 @@ socket.on('distanceRecord', function(message)
     }
     if(message.command == 'PRBSPlay')
     {
-        //Add additional check to be ready?
         readyDevices = Array(connectedDeviceIds.length).fill(0);
         finishedDevices = Array(connectedDeviceIds.length).fill(0);
         stoppedDevices = Array(connectedDeviceIds.length).fill(0);
@@ -694,15 +501,6 @@ socket.on('distanceRecord', function(message)
     {
         console.log('Received command to play PRBS from device: '+message.devinarray);
         //Check through devices in current section and note if recording
-        /*
-        for(let i = 0; i < connectedDeviceIds.length; i++)
-        {
-            if(message.device == connectedDeviceIds[i])
-            {
-                readyDevices[i] = 1;
-            }
-        }
-        */
         readyDevices[message.devinarray-1] = 1;
         console.log(readyDevices);
         var allReady = readyDevices.every(value => value === 1);
@@ -733,24 +531,9 @@ socket.on('distanceRecord', function(message)
                 //If finished PRBS for the last device.
                 if(message.deviceNo == connectedDeviceIds.length)
                 {
-                    console.log('Last device finished');
-                    //Possibly send audio snippets to python script.
+
+                    
                 }
-                /*
-                else
-                {
-                    setTimeout(function()
-					{
-						socket.emit('distanceRecord',{
-                            timedate: message.timedate,
-                            command: 'PRBSPlay',
-                            device: connectedDeviceIds[message.deviceNo],
-                            room: message.room,
-                            master: message.master
-                        });
-					},100);
-                }
-                */
             };
         }
     }
@@ -772,11 +555,7 @@ socket.on('distanceRecord', function(message)
     {
         console.log("Received finished from: "+message.devinarray);
         finishedDevices[message.devinarray-1] = 1;
-        //.log(finishedDevices);
         var allReady = finishedDevices.every(value => value === 1);
-        //console.log(allReady);
-        //console.log(message.deviceinarray);
-        //console.log(connectedDeviceIds.length);
         
         if(message.deviceNo == connectedDeviceIds.length && allReady)
         {
@@ -789,17 +568,7 @@ socket.on('distanceRecord', function(message)
                     room: roomToken,
                     master: message.master
                 });
-              }, 1000); // Run the function after 3 seconds
-              
-            /*
-            socket.emit('distanceRecord',{
-                timedate: message.timedate,
-                command: 'EndPRBS',
-                devinarray: deviceInArray,
-                room: roomToken,
-                master: message.master
-            });
-            */
+              }, 1000); // Run the function after 1 second       
         } 
         if(finishedDevices.length == connectedDeviceIds.length && allReady)
         {
@@ -831,9 +600,7 @@ socket.on('distanceRecord', function(message)
     if(message.command == 'LastPRBSCheck')
     {  
         DevicesPRBSEnded[message.devinarray-1] = 1;
-        //console.log(DevicesPRBSEnded);
         var allDone = DevicesPRBSEnded.every(value => value === 1);
-        //console.log(allDone);
         if(DevicesPRBSEnded.length == connectedDeviceIds.length && allDone)
             socket.emit('distanceRecord',
             {
@@ -852,32 +619,6 @@ socket.on('distanceRecord', function(message)
     }
     if(message.command == 'ReadyForDownload')
     {
-        /*
-        const filename = message.audioFile;
-        const httpsAgent = new https.Agent({
-            rejectUnauthorized: false,
-        });
-        const xhr = new XMLHttpRequest();
-        xhr.open('GET', `https://192.168.11.239/download/${filename}`, true, null, httpsAgent);
-        xhr.responseType = 'blob';
-        xhr.onload = function() {
-            if (xhr.status === 200) {
-              const blob = xhr.response;
-              // Create a download link for the file.
-              const downloadLink = document.createElement('a');
-              downloadLink.href = URL.createObjectURL(blob);
-              downloadLink.download = filename;
-          
-              // Append the download link to the DOM.
-              //document.body.appendChild(downloadLink);
-              downloadLinksContainer.appendChild(downloadLink);
-              // Click the download link to start downloading the file.
-              //downloadLink.click();
-            }
-          };
-        xhr.send();
-        */
-        
         const downloadLink = document.createElement('a');
         downloadLink.href = message.file;
         downloadLink.download = 'multi_channel_audio.wav';
@@ -885,43 +626,6 @@ socket.on('distanceRecord', function(message)
         downloadLinksContainer.appendChild(downloadLink);
         
     }
-    /*
-    if(message.command == 'EmitPRBS')
-    {
-        
-        console.log('Device received PRBS command');
-        var distanceprbs1 = new Audio('../prbs1.wav');
-        distanceprbs1.loop = false;
-        distanceprbs1.volume = 1.0;
-        distanceprbs1.play();
-        distanceprbs1.onended = function()
-        {
-            console.log('PRBS 1 finished');
-            socket.emit('distanceRecord',{
-                timedate: message.timedate,
-                device1: message.device1,
-                device2: message.device2,
-                command: 'EmitPRBS',
-                device: 2,
-                pair: message.pair,
-                room: message.room
-            });
-        };
-        
-    }*/
-    /*
-    if(message.command == 'Finished')
-    {
-        //Stop recording -> send to python script
-        socket.emit('distanceRecord' ,{
-            command: 'Stop',
-            room: message.room,
-            device1: message.device1,
-            device2: message.device2,
-            pair: message.pair,
-            room: message.room
-        });
-    }*/
 });
 
 // **************************************
@@ -948,9 +652,7 @@ function createAudioControls()
     controlsDiv.style.alignItems = 'center';
     controlsDiv.style.justifyContent = 'center';
     RunCalibButton = document.createElement("BUTTON");
-    //StartRecordButton = document.createElement("BUTTON");
     StopRecordButton = document.createElement("BUTTON");
-
     RunCalibButton.innerHTML = "Start Synced Recording";
     RunCalibButton.setAttribute("class","RunCalibButton");
     RunCalibButton.style.width = 0.25*screenWidth+'px';
@@ -960,17 +662,7 @@ function createAudioControls()
     RunCalibButton.style.display = 'inline-block';
     RunCalibButton.style.backgroundColor = 'rgb(0, 76, 108)';
     RunCalibButton.style.color = 'rgb(255,255,255)';
-    // Disable until calibration complete
-    /*
-    StartRecordButton.innerHTML = "Start Recording";
-    //StartRecordButton.setAttribute("class","StartRecordButton");
-    StartRecordButton.id = "StartRecordButton";
-    StartRecordButton.style.width = '400px';
-    StartRecordButton.style.height = '200px';
-    StartRecordButton.style.fontSize = '50px';
-    */
     StopRecordButton.innerHTML = "Stop Recording";
-    //StopRecordButton.setAttribute("class","StopRecordButton");
     StopRecordButton.id = "StopRecordButton";
     StopRecordButton.style.width = 0.25*screenWidth+'px';
     StopRecordButton.style.height = 0.25*screenWidth+'px';
@@ -986,13 +678,6 @@ function createAudioControls()
     downloadLinksContainer = document.createElement("div");
     downloadLinksContainer.id = "downloadsDiv";
     // Functions for buttons
-    /*
-    StartRecordButton.onclick = function()
-    {
-        StartRecording();
-        StartRecordButton.disabled = true;
-        StopRecordButton.disabled = false;
-    }*/
     StopRecordButton.onclick = function()
     {
         StopRecording();
@@ -1008,205 +693,12 @@ function createAudioControls()
     }
     // Add controls to document
     controlsDiv.appendChild(RunCalibButton);
-    //controlsDiv.appendChild(StartRecordButton);
     controlsDiv.appendChild(StopRecordButton);
-    //controlsDiv.appendChild(EndPRBSButton); // ********************************
     document.body.appendChild(controlsDiv);
     document.body.appendChild(downloadLinksContainer);
     
 }
-// Function called to create the recording status of local device.
-// Add master sees recording status of all devices?
-function createRecordingStatus()
-{
 
-}
- // Renderer window resizing
- /*
- window.addEventListener('resize', function()
-{
-	var width = window.innerWidth;
-	var height = window.innerHeight;
-	renderer.setSize( width*0.75, height*0.75);
-	camera.aspect = width / height;
-	camera.updateProjectionMatrix();
-});
-
-// Render in extra devices
-function checkDeviceRender()
-{
-    if(numDevices >= 1)
-    {
-        // Remove timeout later
-        setTimeout(function()
-        {	
-            //Generate colour hex from id
-            var colourHex = stringToHex(connectedDeviceIds[0]);
-            colourHex = colourHex.substring(0, 6);
-            colourHex = '0x'+colourHex; 
-            //console.log(colourHex);
-            //console.log(typeof colourHex);
-            phoneMesh1.material.color.setHex(colourHex);
-            scene.add(phoneMesh1);
-            phoneMesh1.position.set(0, 0, 0);
-            // Device text
-            fontLoader.load(
-                // path to the font (included in three)
-                '../droid_serif_regular.typeface.json',
-                // called when the font has loaded
-                function (droidFont) {
-                const settings = {
-                    size: 0.01,
-                    height: 0.0008,
-                    font: droidFont,
-                }
-                const textGeometry = new TextGeometry('Device 1', settings);
-                const textMaterial = new THREE.MeshBasicMaterial();
-                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-                textMesh.position.x = 0.05;
-                //textMesh.rotateX(-Math.PI / 2);
-                scene.add(textMesh);
-                }, 
-                // called when the font is loading
-                function (xhr) {
-                console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
-                },
-                // called when there is an error loading the font
-                function (error) {
-                console.log(error);
-                }
-            );
-        },100);
-    }
-    if(numDevices >= 2) 
-    {
-        // Remove timeout later
-        setTimeout(function()
-        {	
-            //Generate colour hex from id
-            var colourHex = stringToHex(connectedDeviceIds[1]);
-            colourHex = colourHex.substring(0, 6);
-            colourHex = '0x'+colourHex;
-            phoneMesh2.material.color.setHex(colourHex);
-            scene.add(phoneMesh2);
-            phoneMesh2.position.set(0, 0.06, 0);
-            // Device text
-            fontLoader.load(
-                // path to the font (included in three)
-                '../droid_serif_regular.typeface.json',
-                // called when the font has loaded
-                function (droidFont) {
-                const settings = {
-                    size: 0.01,
-                    height: 0.0008,
-                    font: droidFont,
-                }
-                const textGeometry = new TextGeometry('Device 2', settings);
-                const textMaterial = new THREE.MeshBasicMaterial();
-                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-                textMesh.position.x = 0.05;
-                textMesh.position.y = 0.06;
-                //textMesh.rotateX(-Math.PI / 2);
-                scene.add(textMesh);
-                }, 
-                // called when the font is loading
-                function (xhr) {
-                console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
-                },
-                // called when there is an error loading the font
-                function (error) {
-                console.log(error);
-                }
-            );
-        },100);
-    }
-    if(numDevices >= 3)
-    {
-        // Remove timeout later
-        setTimeout(function()
-        {	
-            //Generate colour hex from id
-            var colourHex = stringToHex(connectedDeviceIds[2]);
-            colourHex = colourHex.substring(0, 6);
-            colourHex = '0x'+colourHex;
-            phoneMesh3.material.color.setHex(colourHex);
-            scene.add(phoneMesh3);
-            phoneMesh3.position.set(0, 0.12, 0);
-            // Device text
-            fontLoader.load(
-                // path to the font (included in three)
-                '../droid_serif_regular.typeface.json',
-                // called when the font has loaded
-                function (droidFont) {
-                const settings = {
-                    size: 0.01,
-                    height: 0.0008,
-                    font: droidFont,
-                }
-                const textGeometry = new TextGeometry('Device 3', settings);
-                const textMaterial = new THREE.MeshBasicMaterial();
-                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-                textMesh.position.x = 0.05;
-                textMesh.position.y = 0.12;
-                //textMesh.rotateX(-Math.PI / 2);
-                scene.add(textMesh);
-                }, 
-                // called when the font is loading
-                function (xhr) {
-                console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
-                },
-                // called when there is an error loading the font
-                function (error) {
-                console.log(error);
-                }
-            );
-        },100);
-    }
-    if(numDevices >= 4)
-    {
-        // Remove timeout later
-        setTimeout(function()
-        {	
-            //Generate colour hex from id
-            var colourHex = stringToHex(connectedDeviceIds[3]);
-            colourHex = colourHex.substring(0, 6);
-            colourHex = '0x'+colourHex;
-            phoneMesh4.material.color.setHex(colourHex);
-            scene.add(phoneMesh4);
-            phoneMesh4.position.set(0, 0.18, 0);
-            // Device text
-            fontLoader.load(
-                // path to the font (included in three)
-                '../droid_serif_regular.typeface.json',
-                // called when the font has loaded
-                function (droidFont) {
-                const settings = {
-                    size: 0.01,
-                    height: 0.0008,
-                    font: droidFont,
-                }
-                const textGeometry = new TextGeometry('Device 4', settings);
-                const textMaterial = new THREE.MeshBasicMaterial();
-                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-                textMesh.position.x = 0.05;
-                textMesh.position.y = 0.18;
-                //textMesh.rotateX(-Math.PI / 2);
-                scene.add(textMesh);
-                }, 
-                // called when the font is loading
-                function (xhr) {
-                console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
-                },
-                // called when there is an error loading the font
-                function (error) {
-                console.log(error);
-                }
-            );
-        },100);
-    }
-    rendering();
-}
-*/
 // Function that converts a string to hex
 const stringToHex = (str) => 
 {
@@ -1222,7 +714,6 @@ const stringToHex = (str) =>
 };
 function StartRecording()
 {
-    //console.log('Start button pressed');
     // Get current time/date
     timedate = Date.now().toString();
     // Send command to room devices to start recording. Use token as name identifier.
@@ -1234,16 +725,11 @@ function StartRecording()
 }
 function StopRecording()
 {
-    //console.log('Stop button pressed');
     socket.emit('distanceRecord',{
         room: roomToken,
         command: 'Stop',
         timedate: timedate
     });
-
-}
-function RunCalibration()
-{
 
 }
 // Adding to the PCM buffer
@@ -1257,42 +743,16 @@ function Float32Concat(first, second)
 // Function to send the captured Audio to all devices in the room, through the server.
 function shareAudio(audioData, timedate)
 {
-    //console.log("Sharing audio data with other devices, filesize: "+audioData.length);
-    //console.log('ShareAudio function with timedate: '+timedate);
-    
     socket.emit('audioData',{ 
         audioData: audioData,
         timedate: timedate,
         room: roomToken,
         device: deviceInArray},
         { binary: true });
-  
-   /*
-    const form = new FormData();
-    form.append('file', audioData);
-    form.append('name', timedate+'_'+deviceInArray+'.pcm');
-    form.append('room', roomToken);
-    const options = {
-        hostname: 'syncrecord.eu',
-        port: 443,
-        path: '/audioShare',
-        method: 'POST',
-        headers: form.getHeaders()
-        };
-    const req = https.request(options, (res) => {
-        console.log(`Server responded with status code: ${res.statusCode}`);
-    });
-    
-    form.pipe(req);
-    
-    req.on('error', (error) => {
-        console.error(`Error sending file: ${error.message}`);
-    }); */
 }
 // Function to download an audio track
 function download(filename, data)
 {
-    //console.log("Download function started");
     var element = document.createElement('a');
     element.setAttribute('href',data);
     element.setAttribute('download',filename);
@@ -1309,7 +769,7 @@ function distanceMeasurement()
         numDevices: connectedDeviceIds.length
     });
 }
-function generateRoundRobinPairs(numbers) 
+function generateRoundRobinPairs(numbers) // No longer used.
 {
     var n = numbers.length;
     console.log('n: '+n);
@@ -1331,18 +791,4 @@ function generateRoundRobinPairs(numbers)
       numbers.splice(1, 0, numbers.pop());
     }
     return pairs;
-}
-
-// ********* FOR RECORDING TESTING, REMOVE BEFORE DEPLOYMENT ********** //
-function EndedPRBS()
-{
-    /*
-    socket.emit('distanceRecord',{
-        timedate: timedate,
-        command: 'EndPRBS',
-        devinarray: deviceInArray,
-        localtime: totSamples,
-        room: roomToken,
-    });
-    */
 }

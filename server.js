@@ -1,11 +1,7 @@
-/*
-	Testing of socket.io rooms for communication between devices assigned to certain recording sessions.
-	A new room is created by the master device, which can be joined by other devices.
-	NOTE: Add master device approval to allow a new client device to join? Pop up notification of new client attempting to join?
-	Written by: Padraic McEvoy
-	Last updated: 19/06/2023
-	Link: https://socket.io/docs/v3/rooms/
-*/
+/* ************************************
+    Written by: Padraic McEvoy
+    Last updated 21/12/2023
+************************************ */
 //Using required packages
 const path = require('path');
 // For running remotely, use https
@@ -13,7 +9,6 @@ const https = require('https');
 //const http = require('http');
 const express = require('express');
 const socketio = require('socket.io');
-//const ss = require('socket.io-stream');
 //Import PythonShell module.
 const {PythonShell} = require('python-shell');
 //Package to convert pcm to wav
@@ -34,91 +29,31 @@ const fs = require('fs');
 const { DH_UNABLE_TO_CHECK_GENERATOR } = require('constants');
 const { deserialize } = require('v8');
 
-// Check file access permissions WRITE
-/*
-const filePath = './tmp/'
-fs.access(filePath, fs.constants.W_OK, (err) => {
-	if (err) {
-	  console.error(`No write access to ${filePath}`);
-	} else {
-	  console.log(`Write access granted to ${filePath}`);
-	}
-  });
-  */
-
+// 8443 for remote; 443 for local
 const PORT = 443 || process.env.PORT;
-/*
+
 var https_options = {
 	key: fs.readFileSync("./ssl/privkey.pem"),
     cert: fs.readFileSync("./ssl/cert.pem"),
     ca: fs.readFileSync("./ssl/fullchain.pem")
 };
-*/
+
 // For local testing a self-signed ssl cert is used:
+/*
 var https_options = {
 	key: fs.readFileSync("./ssl/openssl/privkey.pem"),
     cert: fs.readFileSync("./ssl/openssl/cert.pem")
 };
+*/
 
-//const PORT = 80 || process.env.PORT;
 const app = express();
 const server = https.createServer(https_options, app);
-//const server = http.createServer(app);
 const io = socketio(server);
 //Set static folder
-//app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static('public', { 'extensions': ['html', 'js'], 'content-type': 'application/javascript' }));
 app.use('/build/', express.static(path.join(__dirname, 'node_modules/three/build')));
 app.use('/jsm/', express.static(path.join(__dirname, 'node_modules/three/examples/jsm')));
 app.use('/https/', express.static(path.join(__dirname, 'node_modules/https')));
-//app.use('/stream/', express.static(path.join(__dirname, 'node_modules/socket.io-stream')));
-
-/*
-app.listen(3000, () => {
-  console.log('Server is listening on port 3000');
-});*/
-
-//HTTPS Streaming of audio
-/*
-app.post('/upload', upload.single('file'), (req, res) => {
-	const file = req.file; // Uploaded file object
-	const name = req.body.name; // Value of the 'name' field
-	const room = req.body.room; // Value of the 'description' field
-  
-	const chunks = [];
-	res.on('data', (chunk) => {
-	  chunks.push(chunk);
-	});
-	res,on('end', () => {
-	  console.log('All audio data received');
-	  const dataArrayBuffer = Buffer.concat(chunks);
-	  const dataArray = deserializeDataArray(dataArrayBuffer);
-	  // Send audio data to client devices
-	  
-  
-	});
-  
-  }); */
-
-/*
-app.post('/audioShare', (req, res) => {
-	var tempBuffer = [];
-	// Create a writable stream to save the received binary data
-	const writableStream = fs.createWriteStream(tempBuffer);
-	
-	// Receive the binary data in chunks
-	req.on('data', (chunk) => {
-	  // Write each chunk to the writable stream
-	  writableStream.write(chunk);
-	});
-	
-	// End the writable stream when all data has been received
-	req.on('end', () => {
-	  writableStream.end();
-	  console.log('File saved successfully.');
-	  res.sendStatus(200);
-	});
-});*/
 
 // Allow downloading of created audio files; New route.
 app.get('/download/:filename', (req, res) => {
@@ -163,24 +98,6 @@ io.on('connection', socket => {
 
 	socket.on('audioData', function(message)
 	{
-		//console.log('audio data received, size: '+message.audioData.length+' from device: '+message.device);
-		// Create a new WaveFile instance
-		//const wav = new WaveFile();
-		// Set the audio format properties
-		//wav.fromScratch(1, 48000, '32f', message.audioData);
-		// Change the bit depth to 32-bit
-		//wav.toBitDepth("16");
-		// Save the WAV file
-		//const wavBuffer = wav.toBuffer();
-
-		//Sending raw pcm, can change to .wav
-		/*
-		io.to(message.room).emit('audioData',{
-			audioData: message.audioData,
-			timedate: message.timedate,
-			device: message.device},
-			{ binary: true });
-			*/
 		var filename = message.timedate+'_'+message.device;
 		saveAudioToFile(message.room, filename, message.audioData);
 	});
@@ -190,7 +107,6 @@ io.on('connection', socket => {
 		console.log('Received "distanceRecord" with command: '+message.command+' from: '+socket.id);
 		if(message.command == 'Started')
 		{
-			//console.log('Started response received from device: '+message.device);
 			try{
 				io.to(message.master).emit('distanceRecord',{
 					timedate: message.timedate,
@@ -209,7 +125,6 @@ io.on('connection', socket => {
 			fs.appendFile('./public/tmp/'+message.room+'/'+name,'startrecord '+dev+': '+time+'\r',
 			function(err){
 				if(err) throw err;
-				//console.log('file: ./tmp/'+name+'.txt'+'  data: startrecord '+dev+': '+time+'\r');
 			});
 			
 		}
@@ -252,7 +167,6 @@ io.on('connection', socket => {
 			'startprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r',
 			function(err){
 				if(err) throw err;
-				//console.log('file: ./tmp/'+name+'.txt'+'  data: startprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
 			});
 		}
 		else if(message.command == 'Finished')
@@ -274,12 +188,10 @@ io.on('connection', socket => {
 			'stoppedprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r',
 			function(err){
 				if(err) throw err;
-				//console.log('file: ./tmp/'+name+'.txt'+'  data: stopprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
 			});
 		}
 		else if(message.command == 'Stop')
 		{
-			//console.log('Sending command: '+message.command+' to devices: '+message.device1+' and '+message.device2);
 			io.to(message.room).emit('distanceRecord',{
 				timedate: message.timedate,
 				command: message.command,
@@ -289,7 +201,6 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'Start')
 		{
-			//console.log('Sending command: '+message.command+' to room: '+message.room);
 			io.to(message.room).emit('distanceRecord',{
 				timedate: message.timedate,
 				command: 'Start',
@@ -305,7 +216,6 @@ io.on('connection', socket => {
 					'numberdevices '+message.numDevices+'\r',
 					function(err){
 						if(err) throw err;
-						//console.log('file: ./tmp/'+name+'.txt'+'  data: stopprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
 					});
 				}
 			});
@@ -317,7 +227,6 @@ io.on('connection', socket => {
 			'stoppedrecord '+message.devinarray+': '+message.localtime+'\r',
 			function(err){
 				if(err) throw err;
-				//console.log('file: ./tmp/'+name+'.txt'+'  data: stopprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
 			});
 			io.to(message.master).emit('distanceRecord',{
 				timedate: message.timedate,
@@ -329,8 +238,6 @@ io.on('connection', socket => {
 				room: message.room,
 				master: message.master
 			});
-			// RUN PYTHON SCRIPT HERE. CHECK AUDIO FILE
-			// Script to synchronise final recordings
 		}
 		else if(message.command == 'PRBSFinished')
 		{
@@ -361,7 +268,6 @@ io.on('connection', socket => {
 			'endedPRBS '+message.devinarray+': '+message.localtime+'\r',
 			function(err){
 				if(err) throw err;
-				//console.log('file: ./tmp/'+name+'.txt'+'  data: stopprbs '+message.deviceNo+' device '+message.devinarray+': '+message.localtime+'\r');
 			});
 			io.to(message.master).emit('distanceRecord',{
 				timedate: message.timedate,
@@ -386,8 +292,6 @@ io.on('connection', socket => {
 				args: arguments
 			  };
 			PythonShell.run('./ReadAudio.py', options).then(messages=>{
-				// No results to print to console.
-				//Print when successful TODO: Add timeout to detect latency errors etc.
 				io.to(message.master).emit('distanceRecord',
 				{
 					timedate: message.timedate,
@@ -407,7 +311,6 @@ io.on('connection', socket => {
 			{
 				arguments.push('./public/tmp/'+message.room+'/'+message.timedate+'_'+i+'.pcm');
 			}
-			//console.log("Python arguments: "+ arguments);
 			let options = {
 				mode: 'text',
 				pythonOptions: ['-u'], // get print results in real-time
@@ -416,16 +319,6 @@ io.on('connection', socket => {
 			
 			  const pythonScript = 'SyncAudio.py';
 			const pyshell = new PythonShell(pythonScript, options);
-			/*
-			// Set up event listeners to capture stdout and stderr
-			pyshell.on('message', (message) => {
-				console.log(`Python script stdout: ${message}`);
-			});
-			
-			pyshell.on('stderr', (message) => {
-				console.error(`Python script stderr: ${message}`);
-			});
-			*/
 			// Optional: Handle script termination
 			pyshell.end((err, code, signal) => {
 				if (err) {
@@ -444,15 +337,6 @@ io.on('connection', socket => {
 				}
 				// Commands to send download links to master device
 			});
-			
-			/*
-			PythonShell.run('SyncAudio.py', options).then(messages=>{
-				// No results to print to console.
-				//Print when successful TODO: Add timeout to detect latency errors etc.
-				// Check what message; Error, complete?
-				//console.log(messages);
-			});*/
-			
 		}
 	});
 	
@@ -473,7 +357,7 @@ function saveAudioToFile(session, filename, data) {
 	  if (err) {
 		console.error('Error saving audio:', err);
 	  } else {
-		//console.log('Audio data saved to file: '+filePath);
+		
 	  }
 	});
   }

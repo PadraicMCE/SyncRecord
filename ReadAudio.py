@@ -4,9 +4,6 @@ import csv
 import sys
 from numpy.fft import fft, ifft
 
-## TODO: Find out last PRBS in each recording and take that section for cross correlation.
-# Feed audio to python stript from web server.
-# Syncronise audio in python script and make available to clients.
 ## Functions ##
 def left_shift(arr, shift_amount):
     pass
@@ -20,7 +17,6 @@ def right_shift(arr, shift_amount):
     #arr = arr[-shift_amount:] + arr[:-shift_amount]
 
 
-#numDevices = 4
 #Create dictionary filled with a dictionary for each device
 devices = {}
 for i in range(1,len(sys.argv) - 1):
@@ -42,12 +38,10 @@ segments = content.split()
 #Find index for number of devices in the array
 matching_indices = [index for index, segment in enumerate(segments) if 'startrecord' in segment]
 if len(matching_indices) != len(devices):
-    print('Error with startrecord data') #Add extra error handling
+    print('Error with startrecord data')
 
-#Grab start times for each device. Currently undefined (zero)
-# Might not be needed
+#Grab start times for each device.
 for i in range(1, len(devices)+1):
-    #print(i)
     for j in range(1, len(devices)+1):
         if(segments[matching_indices[j-1]+1] == f"{i}:"):
             devices[f"Device{i}"]['startrecord'] = segments[matching_indices[j-1]+2]
@@ -63,10 +57,8 @@ for index, element in enumerate(segments):
     if(element == 'stoppedprbs'):
         devices[f"Device{segments[index+3][0]}"][f"prbs{segments[index+1]}stop"] = segments[index+4]
 
-#print(devices)
 
-##    READ AUDIO FROM ARGUMENTS ## ADD AGRUMENT FOR SECTION OF AUDIO 
-# Rather than cross correlation on entire audio data.
+##    READ AUDIO FROM ARGUMENTS 
 audio = {}
 recordings = {}
 for i in range(1,len(sys.argv)-1):

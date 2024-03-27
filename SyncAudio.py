@@ -1,13 +1,12 @@
 import numpy as numpy
 import sys
+import os
 #Pattern matching
 import re
 #Wav saving
 import scipy.io.wavfile
-
-## Just for test plots ##
-#import matplotlib.pyplot as plt
-#######
+#Zip folder creating
+import zipfile
 
 ## Reads full audio streams
 '''
@@ -39,7 +38,6 @@ for i in range(0, len(segments),2):
     entry = segments[i]
     match = re.match(r'mov(\d+)_(\d+)_(\d+)', entry)
     if match:
-        ##Add: Create array of all mismatches between devices
         a = int(match.group(1))
         b = int(match.group(2))
         c = int(match.group(3))
@@ -105,5 +103,21 @@ for i in range(1,len(syncAudio)+1):
 multichannel_data = numpy.column_stack(channels)
 
 #Save audio channels into wav file
+#sample_rate = 48000
+#scipy.io.wavfile.write(f"{sys.argv[1]}.wav", sample_rate, multichannel_data)
+
+#Save audio channels seperately and in zip file
 sample_rate = 48000
-scipy.io.wavfile.write(f"{sys.argv[1]}.wav", sample_rate, multichannel_data)
+for i in range(1,len(sys.argv)-1):
+    #parse file extension
+    base = os.path.basename(sys.argv[i+1])
+    base, ext = os.path.splitext(base)
+    scipy.io.wavfile.write(f"{base}_sync.wav", sample_rate, channels[i-1])
+
+with zipfile.ZipFile(f"{sys.argv[1]}.zip", 'w') as zipf:
+    #Add audio channel files
+    for i in range(1,len(sys.argv)-1):#
+        base = os.path.basename(sys.argv[i+1])
+        base, ext = os.path.splitext(base)
+        zipf.write(f"{base}_sync.wav",f"{base}_sync.wav")
+        zipf.write(sys.argv[i+1],f"{base}.pcm")

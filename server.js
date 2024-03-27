@@ -30,21 +30,21 @@ const { DH_UNABLE_TO_CHECK_GENERATOR } = require('constants');
 const { deserialize } = require('v8');
 
 // 8443 for remote; 443 for local
-const PORT = 443 || process.env.PORT;
-
+const PORT = 8443 || process.env.PORT;
+/*
 var https_options = {
 	key: fs.readFileSync("./ssl/privkey.pem"),
     cert: fs.readFileSync("./ssl/cert.pem"),
     ca: fs.readFileSync("./ssl/fullchain.pem")
-};
-
+}; 
+*/
 // For local testing a self-signed ssl cert is used:
-/*
+
 var https_options = {
 	key: fs.readFileSync("./ssl/openssl/privkey.pem"),
     cert: fs.readFileSync("./ssl/openssl/cert.pem")
 };
-*/
+
 
 const app = express();
 const server = https.createServer(https_options, app);
@@ -65,6 +65,14 @@ app.get('/download/:filename', (req, res) => {
 
 io.on('connection', socket => {
     socket.emit('message', 'Welcome to server');
+
+	socket.on('disconnect', function(message)
+	{
+		// TODO: Check room of disconnected device.
+		io.emit('devDisconnected',{
+			id: socket.id
+		});
+	});
 
     socket.on('joinRoom', (room) =>
 	{
@@ -317,7 +325,7 @@ io.on('connection', socket => {
 				args: arguments,
 			  };
 			
-			  const pythonScript = 'SyncAudio.py';
+			const pythonScript = 'SyncAudio.py';
 			const pyshell = new PythonShell(pythonScript, options);
 			// Optional: Handle script termination
 			pyshell.end((err, code, signal) => {
@@ -326,7 +334,8 @@ io.on('connection', socket => {
 				} else {
 				console.log(`Python script execution completed with code ${code}, signal ${signal}`);
 				// Allow files to be downloaded
-				const audioFile = './tmp/'+message.room+'/'+message.timedate+'_sync.wav';
+				//const audioFile = './tmp/'+message.room+'/'+message.timedate+'_sync.wav';
+				const audioFile = './tmp/'+message.room+'/'+message.timedate+'_sync.zip';
 				io.to(message.master).emit('distanceRecord',
 				{
 					timedate: message.timedate,
@@ -334,6 +343,7 @@ io.on('connection', socket => {
 					room: message.room,
 					file: audioFile
 				});
+				console.log('Sending download command to master');
 				}
 				// Commands to send download links to master device
 			});

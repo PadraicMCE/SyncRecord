@@ -11,7 +11,7 @@ const socket = io();
 const width = screen.availWidth;
 const height = screen.availHeight;
 //Flag for debug printing
-var debugprint = false;
+var debugprint = true;
 //Room token to allow communication with other devices in the session
 var roomToken;
 // Determine if master device
@@ -147,9 +147,10 @@ socket.on('joinedRoom', function(message)
     if(master==true)
     {
         //Poll connected devices to check a device is not reconnecting?
-        numDevices = numDevices + 1;
+        //numDevices = numDevices + 1;
         if(debugprint) console.log(message.id);
         connectedDeviceIds.push(message.id);
+        numDevices = connectedDeviceIds.length;
         console.log(connectedDeviceIds);
         if(debugprint) console.log(numDevices);
         socket.emit('assignDevice', {
@@ -170,7 +171,11 @@ socket.on('DevNumAssigned', message =>
     joinRoomButton.style.color = 'rgb(255,255,255)';
     // Identify the device recording in batch (and room token)
     deviceInArray = message;
-    console.log('Device in array: '+deviceInArray);
+    //console.log('Device in array: '+deviceInArray);
+    var joinTone = new Audio('../notification_sound.wav');
+    joinTone.loop = false;
+    joinTone.volume = 1.0;
+    joinTone.play();
 });
 socket.on('Number of Devices', function(message)
 {
@@ -372,7 +377,7 @@ socket.on('distanceRecord', function(message)
                             var localtime = Date.now().toString();
                             console.log("Received started command from audio worklet");
                             // Visually show that device has started recording
-                            document.body.style.backgroundColor = '0x00FF00'; //FIX
+                            joinRoomButton.style.backgroundColor = 'rgb(0, 255, 0)';
                             socket.emit('distanceRecord',{
                                 numDevices: connectedDeviceIds.length,
                                 timedate: message.timedate,
@@ -389,7 +394,7 @@ socket.on('distanceRecord', function(message)
                             console.log("Received stopped command from audio worklet, with timedate: "+e.data.timedate);
                             recordPermission = false;
                             // Visually show that device has started recording
-                            document.body.style.backgroundColor = '0x000000';
+                            joinRoomButton.style.color = 'rgb(255,255,255)';
                             // Distance measurement script
                             source.disconnect(recorderNode);
                             socket.emit('distanceRecord',{
@@ -470,6 +475,7 @@ socket.on('distanceRecord', function(message)
     }
     if(message.command == 'PRBSPlay')
     {
+        // #### What arrays for?
         readyDevices = Array(connectedDeviceIds.length).fill(0);
         finishedDevices = Array(connectedDeviceIds.length).fill(0);
         stoppedDevices = Array(connectedDeviceIds.length).fill(0);
@@ -512,7 +518,8 @@ socket.on('distanceRecord', function(message)
             var distanceprbs1 = new Audio('../prbs1.wav');
             distanceprbs1.loop = false;
             distanceprbs1.volume = 1.0;
-            distanceprbs1.play();
+            distanceprbs1.play(); // Attach to onplay event. log.
+            // Flush the event queue to check that an onended already exists.
             distanceprbs1.onended = function()
             {
                 finishedDevices = Array(connectedDeviceIds.length).fill(0);
@@ -621,10 +628,24 @@ socket.on('distanceRecord', function(message)
     {
         const downloadLink = document.createElement('a');
         downloadLink.href = message.file;
-        downloadLink.download = 'multi_channel_audio.wav';
+        downloadLink.download = 'multi_channel_audio.zip';
         downloadLink.textContent = message.timedate;
         downloadLinksContainer.appendChild(downloadLink);
         
+    }
+});
+
+socket.on('devDisconnected', function(message)
+{   
+    //console.log(message.id);
+    var dev_part_of_array = connectedDeviceIds.indexOf(message.id);
+    if (dev_part_of_array !== -1)
+    {
+        //console.log(`${message.id} is present in the array.`);
+        refreshConnectedDevices(message.id,dev_part_of_array);
+        //Run reconfigure array?
+    } else {
+        //console.log(`${message.id} is not present in the array.`);
     }
 });
 
@@ -791,4 +812,35 @@ function generateRoundRobinPairs(numbers) // No longer used.
       numbers.splice(1, 0, numbers.pop());
     }
     return pairs;
+}
+function refreshConnectedDevices(socketid,index)
+{
+    //Refresh list of devices connected to the array by removing the disconnected device
+    moveEntriesBack(index);
+    reAssignNumbers();
+}
+
+function moveEntriesBack(startIndex)
+{
+    // Check if startIndex is valid
+    if (startIndex < 0 || startIndex >= connectedDeviceIds.length) {
+        console.log('Invalid startIndex');
+        return;
+    }
+    connectedDeviceIds.splice(startIndex, 1);
+    numDevices = connectedDeviceIds.length;
+    console.log(connectedDeviceIds);
+    console.log("Number of connected devices: "+numDevices);
+}
+
+function reAssignNumbers()
+{
+    connectedDeviceIds.forEach((value, index) => {
+        console.log(`Index ${index}: ${value}`);
+        socket.emit('assignDevice', {
+            device: index+1,
+            id: value,
+            room: roomToken
+        });
+    });
 }

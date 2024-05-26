@@ -42,8 +42,10 @@ class recordProcessor extends AudioWorkletProcessor
         this.port.postMessage({
           eventType: 'data',
           totalSamples: this.sampleCounter,
+          samples: inputChannel.length,
           audioBuffer: inputChannel
         });
+      //console.log(inputChannel)
       this.sampleCounter += inputChannel.length;
       return true;
     }

@@ -95,6 +95,9 @@ for i in range(1, len(devices)+1):
 
 ## Sync mismatch calculations ## ADD: Do this with entire audio tracks.
 mismatches = {}
+distances = {}
+Ts = 1/48000 #Sampling time
+c = 343 # Velocity of sound in air.  m/s
 for i in range(1,len(devices)+1):
     for j in range(1,len(devices)+1):
         mismatches[f"devices{i}_{j}"] = int(numpy.abs((correlations[f"cp{i}"][i-1]-correlations[f"cp{i}"][j-1])-(correlations[f"cp{j}"][i-1]-correlations[f"cp{j}"][j-1])))
@@ -108,7 +111,14 @@ for i in range(1,len(devices)+1):
                 mismatches[f"mov{i}_{j}_{k}"] = -(abs(mismatches[f"diff{i}_{j}_{k}"]) + int(mismatches[f"devices{i}_{j}"]/2))
                 with open(file_path_sync, 'a') as file:
                     file.write(f"mov{i}_{j}_{k}: {mismatches[f'mov{i}_{j}_{k}']}\r")
+                    file.write(f"diff{i}_{j}_{k}: {mismatches[f'diff{i}_{j}_{k}']}\r")
             if(mismatches[f"diff{i}_{j}_{k}"] > 0):
                 mismatches[f"mov{i}_{j}_{k}"] = abs(mismatches[f"diff{i}_{j}_{k}"]) - int(mismatches[f"devices{i}_{j}"]/2)
                 with open(file_path_sync, 'a') as file:
                     file.write(f"mov{i}_{j}_{k}: {mismatches[f'mov{i}_{j}_{k}']}\r")
+                    file.write(f"diff{i}_{j}_{k}: {mismatches[f'diff{i}_{j}_{k}']}\r")
+            if(i == k):
+                distances[f"distance{i}_{j}"] = ((mismatches[f"diff{i}_{j}_{k}"] * Ts)/2) * 343
+                with open(file_path_sync, 'a') as file:
+                    file.write(f"distance{i}_{j}: {distances[f'distance{i}_{j}']}\r")
+

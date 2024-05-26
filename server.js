@@ -14,6 +14,7 @@ const {PythonShell} = require('python-shell');
 //Package to convert pcm to wav
 const WaveFile = require('wavefile').WaveFile;
 const multer = require('multer');
+const buffers = {};	//Buffers for audio data
 
 const storage = multer.diskStorage({
 	destination: function(req,file,cb) {
@@ -29,8 +30,9 @@ const fs = require('fs');
 const { DH_UNABLE_TO_CHECK_GENERATOR } = require('constants');
 const { deserialize } = require('v8');
 
-// 8443 for remote; 443 for local
+
 const PORT = 8443 || process.env.PORT;
+// For remote deployment ssl certificates:
 /*
 var https_options = {
 	key: fs.readFileSync("./ssl/privkey.pem"),
@@ -38,6 +40,7 @@ var https_options = {
     ca: fs.readFileSync("./ssl/fullchain.pem")
 }; 
 */
+
 // For local testing a self-signed ssl cert is used:
 
 var https_options = {
@@ -72,6 +75,21 @@ io.on('connection', socket => {
 		io.emit('devDisconnected',{
 			id: socket.id
 		});
+		// Clear buffers
+		// Clean up buffers for the device
+		for (const roomId in buffers) 
+		{
+			for (const deviceId in buffers[roomId]) 
+			{
+			  //if (socket.id === deviceId) {
+				/*flushBufferToFile(roomId, deviceId, (err) => {
+				  if (err) {
+					console.error('Error writing remaining buffer to file:', err);
+				  } */
+				  delete buffers[roomId][deviceId];
+				//});
+			}
+		}
 	});
 
     socket.on('joinRoom', (room) =>
@@ -82,7 +100,15 @@ io.on('connection', socket => {
 		io.to(room).emit('joinedRoom',{
 			id: id
 		});
-
+		//Initialise a new nested buffer for the room
+		if(!buffers[room])
+		{
+			buffers[room] = {};
+		}
+		if(!buffers[room][id])
+		{
+			buffers[room][id] = [];
+		}
 	});
 
 	socket.on('assignDevice', function(message)
@@ -106,8 +132,69 @@ io.on('connection', socket => {
 
 	socket.on('audioData', function(message)
 	{
-		var filename = message.timedate+'_'+message.device;
-		saveAudioToFile(message.room, filename, message.audioData);
+		var filename = './public/tmp/'+message.room+'/'+message.timedate+'_'+message.device+'.pcm';
+		//var filename = message.timedate+'_'+message.device;
+		//data = message.audioData;
+		//console.log(message.audioData.BYTES_PER_ELEMENT);
+		//buffer = Buffer.from(message.audioData.buffer);
+		//console.log(buffer.BYTES_PER_ELEMENT);
+		//saveAudioToFile(message.room, filename, buffer);
+		position = message.totsamples;
+		samples = message.samples;
+		//Check buffers initialised
+		if(!buffers[message.room])
+		{
+			buffers[message.room] = {};
+		}
+		if(!buffers[message.room][socket.id])
+		{
+			buffers[message.room][socket.id] = [];
+		}
+		//console.log("Audio data received, samples: "+samples+" ,position: "+position);
+		const bufferData = Buffer.from(message.audioData);
+		//const bufferData = new Float32Array(message.audioData);
+		insertDataAtPosition(buffers[message.room][socket.id],bufferData,position);
+		/*
+		writeFileAtPosition(filename, message.audioData, position, (err) => {
+			if (err) {
+			  console.error('Error writing to file:', err);
+			  socket.emit('error', 'Error writing to file');
+			} else {
+			  socket.emit('success', 'Data written successfully');
+			}
+		});
+		*/
+		/*
+		// Check if the file exists
+		fs.access(filename, fs.constants.F_OK, (err) => {
+			if (err) {
+			// File doesn't exist, create it
+			fs.writeFile(filename, '', (err) => {
+				if (err) {
+				//console.error('Error creating file:', err);
+				} else {
+				//console.log('File created successfully');
+				}
+			});
+			} else {
+			// File exists
+			//console.log('File already exists');
+			if(!isNaN(position))
+			{
+				//
+				
+				//
+				writeDataToPosition(filename, position, message.audioData);
+			}
+			}
+		}); 
+		*/
+		/*
+		if(!isNaN(position))
+		{
+			writeDataToPosition(filename, position, message.audioData);
+		}
+		*/
 	});
 
 	socket.on('distanceRecord', function(message)
@@ -287,19 +374,51 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'Sync')
 		{
+			// Retrieve list of devices in the room
+			const clientsInRoom = io.sockets.adapter.rooms.get(message.room);
+			//console.log(clientsInRoom);
+			const deviceList = [];
+			if (clientsInRoom) {
+				clientsInRoom.forEach(clientId => {
+				  //const clientSocket = io.sockets.sockets.get(clientId);
+				  //deviceList.push(clientSocket.deviceId);
+				  deviceList.push(clientId);
+				});
+			}
+			//console.log(deviceList);
+			// Flush buffers to file for each device in the room
+			i = 1;
+			deviceList.forEach(deviceId => {
+				flushBufferToFile(message.room, deviceId, message.timedate, i, 0, (err) => {
+				if (err) {
+					console.error(`Error flushing buffer to file for device ${deviceId} in room ${roomId}:`, err);
+				} else {
+					console.log(`Buffer flushed to file for device ${deviceId} in room ${message.room}`);
+				}
+				});
+				i = i + 1;
+			});
+			/*
+			console.log('Buffer size: '+buffers[message.room][socket.id].length);
+			flushBufferToFile(message.room, message.timedate, message.devinarray, 0, (err) => {
+				if (err) {
+				  console.error('Error writing remaining buffer to file:', err);
+				}
+			});*/
 			//Run python script to determine synchronisation of audio channels
 			var arguments = [];
 			arguments.push('./public/tmp/'+message.room+'/'+message.timedate);
 			for (let i = 1; i <= message.devinarray; i++)
 			{
-				arguments.push('./public/tmp/'+message.room+'/'+message.timedate+'_'+i+'.pcm');
+				arguments.push('./public/tmp/'+message.room+'/'+message.timedate+'_'+i+'_temp.pcm');
 			}
 			let options = {
 				mode: 'text',
 				pythonOptions: ['-u'], // get print results in real-time
 				args: arguments
-			  };
-			PythonShell.run('./ReadAudio.py', options).then(messages=>{
+			};
+			PythonShell.run('./ReadAudio.py', options).then(messages=>
+			{
 				io.to(message.master).emit('distanceRecord',
 				{
 					timedate: message.timedate,
@@ -310,7 +429,31 @@ io.on('connection', socket => {
 			});
 		}
 		else if(message.command == 'SyncAudio')
-		{
+		{	
+			// Retrieve list of devices in the room
+			const clientsInRoom = io.sockets.adapter.rooms.get(message.room);
+			//console.log(clientsInRoom);
+			const deviceList = [];
+			if (clientsInRoom) {
+				clientsInRoom.forEach(clientId => {
+				  //const clientSocket = io.sockets.sockets.get(clientId);
+				  //deviceList.push(clientSocket.deviceId);
+				  deviceList.push(clientId);
+				});
+			}
+			//console.log(deviceList);
+			// Flush buffers to file for each device in the room
+			i = 1;
+			deviceList.forEach(deviceId => {
+				flushBufferToFile(message.room, deviceId, message.timedate, i, 1, (err) => {
+				if (err) {
+					console.error(`Error flushing buffer to file for device ${deviceId} in room ${roomId}:`, err);
+				} else {
+					console.log(`Buffer flushed to file for device ${deviceId} in room ${message.room}`);
+				}
+				});
+				i = i + 1;
+			});
 			//Run python script to synchronise audio channels
 			//Run python script to determine synchronisation of audio channels
 			var arguments = [];
@@ -371,6 +514,85 @@ function saveAudioToFile(session, filename, data) {
 	  }
 	});
   }
+var positionStreamsMap ={};
+// Function to create a writable stream to the audio file at a specified position
+function createWriteStream(filepath, position) {
+	return fs.createWriteStream(filepath, { flags: 'r+', start: position });
+}
+// Function to get or create a writable stream for a given position in audio file
+function getOrCreateWriteStream(filepath, position) {
+	if (!positionStreamsMap[position]) {
+	  positionStreamsMap[position] = createWriteStream(filepath, position);
+	}
+	return positionStreamsMap[position];
+}
+
+// Event listener for errors on each stream
+Object.values(positionStreamsMap).forEach((writeStream) => {
+	writeStream.on('error', (err) => {
+	  console.error(`Error writing to file:`, err);
+	});
+});
+
+// Function to write data to the stream at a specified position
+function writeDataToPosition(filepath, position, data) {
+	const writeStream = getOrCreateWriteStream(filepath, position);
+	writeStream.write(data, (err) => {
+	  if (err) {
+		console.error(`Error writing data to file:`, err);
+	  } else {
+		//console.log(`Data written successfully to position ${position}`);
+	  }
+	});
+}
+
+function writeFileAtPosition(filepath, data, position, callback)
+{
+	fs.open(filepath, 'r+', (err, fd) => {
+		if (err) return callback(err);
+		fs.write(fd, data, 0, data.length, position, (err) => {
+			if (err) {
+				fs.close(fd, () => callback(err));
+			} else {
+				fs.close(fd, callback);
+			}
+		})
+	})
+}
+
+function insertDataAtPosition(buffer, data, position) 
+{
+	// Ensure the position is within the buffer's range
+	/*
+	if (position > buffer.length) {
+	  position = buffer.length;
+	}*/
+	//buffer.set(data,position);
+	buffer.splice(position, 0, data);
+}
+
+function flushBufferToFile(roomId, deviceId, datestamp, devnum, clear, callback) 
+{
+	const buffer = buffers[roomId][deviceId];
+	console.log('Buffer size in function: '+buffers[roomId][deviceId].length);
+	const data = Buffer.concat(buffer);
+	var filePath = null;
+	// Write the buffered data to a file
+	if(clear == 0)
+	{
+		filePath = path.join(__dirname, `./public/tmp/${roomId}/${datestamp}_${devnum}_temp.pcm`);
+	} else {
+		filePath = path.join(__dirname, `./public/tmp/${roomId}/${datestamp}_${devnum}.pcm`);
+	}
+	fs.writeFile(filePath, data, (err) => {
+	  	if (err) return callback(err);
+	  	if(clear == 1)
+		{
+	  		buffers[roomId][deviceId] = []; // Clear the buffer after writing
+		}
+	  	callback(null);
+	});
+}
 
 server.listen(PORT);
 console.log(`Server running on ${PORT}`);

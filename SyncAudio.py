@@ -112,7 +112,9 @@ for i in range(1,len(sys.argv)-1):
     #parse file extension
     base = os.path.basename(sys.argv[i+1])
     base, ext = os.path.splitext(base)
-    scipy.io.wavfile.write(f"{base}_sync.wav", sample_rate, channels[i-1])
+    directory = os.path.dirname(sys.argv[i+1])
+    #Change directory where wav files are created
+    scipy.io.wavfile.write(f"{directory}/{base}_sync.wav", sample_rate, channels[i-1])
 
 with zipfile.ZipFile(f"{sys.argv[1]}.zip", 'w') as zipf:
     #Add audio channel files
@@ -121,3 +123,4 @@ with zipfile.ZipFile(f"{sys.argv[1]}.zip", 'w') as zipf:
         base, ext = os.path.splitext(base)
         zipf.write(f"{base}_sync.wav",f"{base}_sync.wav")
         zipf.write(sys.argv[i+1],f"{base}.pcm")
+    zipf.write(sys.argv[1],f"data.txt")

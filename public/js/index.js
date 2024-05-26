@@ -40,6 +40,7 @@ var recorderNode;
 // Variables for audio channel synchronisation
 var readyToSync = false;
 var downloadLinksContainer;
+var BufferAudio = Float32Array;
 // **************************************
 // ************ Interface *************** //
 // **************************************
@@ -353,7 +354,8 @@ socket.on('distanceRecord', function(message)
                     recorderNode.port.postMessage({
                         eventType: 'Start'
                     });
-                    var pcmBuffer = new Float32Array();
+                    var pcmBuffer = [];
+                    //var pcmBuffer = new Float32Array();
                     //Temporary audio data sent from worklet node.
                     var audioData;
                     recorderNode.port.onmessage = (e) =>
@@ -362,14 +364,25 @@ socket.on('distanceRecord', function(message)
                         {
                             if(e.data.eventType === 'data')
                             {
-                                audioData = e.data.audioBuffer;
+                                //console.log(e.data.audioData);
+                                //audioData = e.data.audioBuffer;
                                 socket.emit('audioData',{ 
-                                    audioData: audioData,
+                                    audioData: e.data.audioBuffer,
                                     timedate: timedate,
                                     room: roomToken,
-                                    device: deviceInArray},
+                                    device: deviceInArray,
+                                    samples: e.data.samples,
+                                    totsamples: e.data.totalSamples},
                                     { binary: true });
-                                totSamples = e.data.totalSamples;
+                                //pcmBuffer.length = 0;
+                                //totSamples = e.data.totalSamples;
+                                //console.log("Total audio samples: "+e.data.totalSamples)
+                                //console.log("Samples: "+e.data.samples)
+                                // testing audio saved directly on device.
+                                //const inputData = e.data.audioBuffer;
+                                //const buffer = new Float32Array(inputData.length);
+                                //Float32Concat(BufferAudio,buffer);
+                                //console.log(BufferAudio.length);
                             }
                         }  
                         if(e.data.eventType === 'started')
@@ -393,8 +406,8 @@ socket.on('distanceRecord', function(message)
                         {
                             console.log("Received stopped command from audio worklet, with timedate: "+e.data.timedate);
                             recordPermission = false;
-                            // Visually show that device has started recording
-                            joinRoomButton.style.color = 'rgb(255,255,255)';
+                            // Visually show that device has stopped recording
+                            joinRoomButton.style.backgroundColor = 'rgb(50, 50, 50)';
                             // Distance measurement script
                             source.disconnect(recorderNode);
                             socket.emit('distanceRecord',{
@@ -407,6 +420,10 @@ socket.on('distanceRecord', function(message)
                                 room: roomToken,
                                 master: message.master
                             });
+                            // Testing saving audio locally on device
+                            //saveAudioBuffer(BufferAudio);
+                            //BufferAudio = new Float32Array(0);
+
                         }
                     }
                 }
@@ -630,6 +647,13 @@ socket.on('distanceRecord', function(message)
         downloadLink.href = message.file;
         downloadLink.download = 'multi_channel_audio.zip';
         downloadLink.textContent = message.timedate;
+        downloadLink.style.display = 'inline-block';
+        downloadLink.style.padding = '10px 20px';
+        downloadLink.style.backgroundColor = 'rgb(0, 76, 108)';
+        downloadLink.style.color = '#fff';
+        downloadLink.style.textDecoration = 'none';
+        downloadLink.style.borderRadius = '5px';
+        downloadLink.style.fontWeight = 'bold';
         downloadLinksContainer.appendChild(downloadLink);
         
     }
@@ -844,3 +868,14 @@ function reAssignNumbers()
         });
     });
 }
+
+function saveAudioBuffer(buffer) {
+    const pcmBuffer = new Float32Array(buffer);
+    const blob = new Blob([pcmBuffer.buffer], { type: 'audio/pcm' });
+    const url = URL.createObjectURL(blob);
+    console.log(buffer.length)
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'recording'+deviceInArray+'.pcm';
+    link.click();
+  }

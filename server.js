@@ -69,6 +69,11 @@ app.get('/download/:filename', (req, res) => {
 io.on('connection', socket => {
     socket.emit('message', 'Welcome to server');
 
+	// Log every socket message received
+    socket.onAny((event, ...args) => {
+        console.log(`Received event: ${event}, with data:`, args);
+    });
+
 	socket.on('disconnect', function(message)
 	{
 		// TODO: Check room of disconnected device.

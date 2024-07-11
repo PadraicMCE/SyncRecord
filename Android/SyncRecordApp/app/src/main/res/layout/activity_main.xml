@@ -11,24 +11,25 @@
         android:id="@+id/IDInput"
         android:layout_width="254dp"
         android:layout_height="84dp"
-        android:layout_marginTop="172dp"
+        android:layout_marginTop="212dp"
         android:ems="10"
         android:hint="Array ID"
         android:inputType="text"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.496"
+        app:layout_constraintHorizontal_bias="0.484"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
     <Button
         android:id="@+id/joinButton"
-        android:layout_width="113dp"
-        android:layout_height="69dp"
+        android:layout_width="115dp"
+        android:layout_height="70dp"
         android:text="Join Array"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/IDInput" />
+        app:layout_constraintTop_toBottomOf="@+id/IDInput"
+        app:layout_constraintVertical_bias="0.027" />
 
     <TextView
         android:id="@+id/textView"
@@ -37,14 +38,25 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.977" />
+
+    <TextView
+        android:id="@+id/textViewDevNumStatic"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="76dp"
+        android:layout_marginTop="24dp"
+        android:text="Device Number:"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/textViewRoomStatic" />
 
     <TextView
         android:id="@+id/textViewRoomStatic"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="76dp"
-        android:layout_marginTop="68dp"
+        android:layout_marginTop="124dp"
         android:text="Room ID:"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
@@ -54,26 +66,62 @@
         android:layout_width="123dp"
         android:layout_height="18dp"
         android:layout_marginStart="4dp"
-        android:layout_marginTop="68dp"
+        android:layout_marginTop="124dp"
         app:layout_constraintStart_toEndOf="@+id/textViewRoomStatic"
         app:layout_constraintTop_toTopOf="parent" />
-
-    <TextView
-        android:id="@+id/textViewDevNumStatic"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="76dp"
-        android:layout_marginTop="20dp"
-        android:text="Device Number:"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/textViewRoomStatic" />
 
     <TextView
         android:id="@+id/textViewDevNum"
         android:layout_width="81dp"
         android:layout_height="19dp"
         android:layout_marginStart="4dp"
-        android:layout_marginTop="20dp"
+        android:layout_marginTop="24dp"
         app:layout_constraintStart_toEndOf="@+id/textViewDevNumStatic"
         app:layout_constraintTop_toBottomOf="@+id/textViewRoom" />
+
+    <Button
+        android:id="@+id/createButton"
+        android:layout_width="115dp"
+        android:layout_height="70dp"
+        android:text="Create Array"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/IDInput"
+        app:layout_constraintVertical_bias="0.328" />
+
+    <ImageView
+        android:id="@+id/imageView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:srcCompat="@drawable/syncrecordbanner" />
+
+    <Button
+        android:id="@+id/recordButton"
+        android:layout_width="115dp"
+        android:layout_height="70dp"
+        android:text="Start Recording"
+        android:visibility="invisible"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.256"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/imageView"
+        app:layout_constraintVertical_bias="0.812" />
+
+    <Button
+        android:id="@+id/stopButton"
+        android:layout_width="115dp"
+        android:layout_height="70dp"
+        android:text="Stop Recording"
+        android:visibility="invisible"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.78"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.812" />
 </androidx.constraintlayout.widget.ConstraintLayout>

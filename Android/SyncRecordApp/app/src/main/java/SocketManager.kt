@@ -12,7 +12,7 @@ import android.util.Log
 
 import com.mcevoy.syncrecordapp.SocketManagerCallback
 class SocketManager (serverurl: String, private val callback: SocketManagerCallback) {
-    private lateinit var socket: Socket
+    lateinit var socket: Socket
     init{
 
         try {
@@ -29,7 +29,6 @@ class SocketManager (serverurl: String, private val callback: SocketManagerCallb
             println("Error connecting to socket")
         }
     }
-
     private fun initialiseSocketListeners(){
         socket.on(Socket.EVENT_CONNECT, Emitter.Listener {
             // Connection function?
@@ -39,7 +38,6 @@ class SocketManager (serverurl: String, private val callback: SocketManagerCallb
             val error = args[0] as EngineIOException
             Log.e("SocketManager", "Socket connection error: ${error.message}")
         }
-
         socket.on("assignDevice", Emitter.Listener { args ->
             val devicenum = args[0] as String
             val socketid = args[1] as String
@@ -71,18 +69,24 @@ class SocketManager (serverurl: String, private val callback: SocketManagerCallb
             val data = args[0] as JSONObject
             callback.onReceivedDistanceRecord(data)
         })
-
+        socket.on("joinedRoom",Emitter.Listener { args ->
+            val data = args[0] as JSONObject
+            callback.onReceivedJoinedRoom(data)
+        })
     }
-
     fun sendJoinRoom(roomToken: String) {
         socket.emit("joinRoom",roomToken)
     }
-
     fun sendAudio(data: JSONObject){
         socket.emit("audioData",data)
     }
-
     fun sendDistanceRecord(data: JSONObject){
         socket.emit("distanceRecord",data)
+    }
+    fun sendAssignDevice(data: JSONObject) {
+        socket.emit("assignDevice",data)
+    }
+    fun sendDeviceIds(data: JSONObject) {
+        socket.emit("deviceIds",data)
     }
 }

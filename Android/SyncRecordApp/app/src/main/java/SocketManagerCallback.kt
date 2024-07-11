@@ -10,4 +10,5 @@ interface SocketManagerCallback {
     fun onDevNumAssigned(devNum: String)
     fun onNumberOfDevices(number: String)
     fun onReceivedDistanceRecord(data: JSONObject)
+    fun onReceivedJoinedRoom(data: JSONObject)
 }

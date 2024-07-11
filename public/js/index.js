@@ -484,8 +484,7 @@ socket.on('distanceRecord', function(message)
                     command: 'SyncAudio',
                     devices: connectedDeviceIds.length,
                     room: message.room,
-                    master: message.master,
-                    devices: connectedDeviceIds.length
+                    master: message.master
                 });
             }
         }

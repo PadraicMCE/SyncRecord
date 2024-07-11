@@ -55,9 +55,12 @@ for index, element in enumerate(segments):
 audio = {}
 recordings = {}
 for i in range(1,len(sys.argv)-1):
-    audio[f"audio{i}"] = numpy.memmap(sys.argv[i+1], dtype='float32', mode='r+')
-    recordings[f"audio{i}"] = numpy.memmap(sys.argv[i+1], dtype='float32', mode='r+')
-
+    '''WebApp AudioWorklet saves float32 pcm audio
+       Android older versions save int16 ocm audio'''
+    audio[f"audio{i}"] = numpy.memmap(sys.argv[i+1], dtype='int16', mode='r+')
+    recordings[f"audio{i}"] = numpy.memmap(sys.argv[i+1], dtype='int16', mode='r+')
+    #audio[f"audio{i}"] = numpy.memmap(sys.argv[i+1], dtype='float32', mode='r+')
+    #recordings[f"audio{i}"] = numpy.memmap(sys.argv[i+1], dtype='float32', mode='r+')
 
 ##      Read template PRBS data     ##
 prbs1 = open('./public/prbs1.csv', newline='')

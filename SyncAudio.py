@@ -68,7 +68,8 @@ for i in range(0, len(segments),2):
 audio = {}
 recordings = {}
 for i in range(1,len(sys.argv)-1):
-    audio[f"audio{i}"] = numpy.memmap(sys.argv[i+1], dtype='float32', mode='r+')
+    audio[f"audio{i}"] = numpy.memmap(sys.argv[i+1], dtype='int16', mode='r+')
+    #audio[f"audio{i}"] = numpy.memmap(sys.argv[i+1], dtype='float32', mode='r+')
 meanmismatches = {}
 for key in mismatches.keys():
     mean = numpy.mean(numpy.abs(mismatches[key]))

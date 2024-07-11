@@ -20,6 +20,8 @@ import org.json.JSONObject
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
+import androidx.core.view.isVisible
+import java.time.Instant
 
 //Request device microphone
 const val REQUEST_CODE = 200
@@ -34,6 +36,13 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
     private var isRecording = false
     private lateinit var audioRecord: AudioRecord
     private lateinit var recordingThread: Thread
+    // Variables for master device
+    private var master = false
+    private lateinit var arrayToken: String
+    private var connectedDevices: MutableList<String> = mutableListOf()
+    private lateinit var ed: String
+    private lateinit var recordingDevices: Array<Int?>
+    private lateinit var stoppedDevices: Array<Int?>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,16 +60,17 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
         if(!permissionGranted)
             ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE)
 
-
         //socketManager = SocketManager("https://192.168.1.6:8443",this)
         socketManager = SocketManager("https://syncrecord.eu:8443",this)
         // Interface
         val btnJoin: Button = findViewById(R.id.joinButton)
         val inputID: EditText = findViewById(R.id.IDInput)
+        val btnCreate: Button = findViewById(R.id.createButton)
+        val btnRecord: Button = findViewById(R.id.recordButton)
+        val btnStop: Button = findViewById(R.id.stopButton)
         debugText = findViewById(R.id.textView)
         roomText = findViewById(R.id.textViewRoom)
         deviceText = findViewById(R.id.textViewDevNum)
-
 
         inputID.setOnEditorActionListener{v, actionId, event ->
             if (actionId == EditorInfo.IME_ACTION_DONE){
@@ -71,7 +81,6 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
                 false
             }
         }
-
         btnJoin.setOnClickListener {
             // Check Array ID is valid
             //inputID.setText("Button Clicked")
@@ -81,42 +90,121 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
                 //debugText.setText(inputID.text.toString())
                 roomText.text = inputID.text.toString()
                 socketManager.sendJoinRoom(inputID.text.toString().trim())
+                btnCreate.isEnabled = false
             } else {
                 //Notification to user
             }
         }
-
+        btnCreate.setOnClickListener {
+            // TODO: Create Array sequence
+            arrayToken = generateRandomCode(4)
+            master = true
+            roomText.text = arrayToken
+            socketManager.sendJoinRoom(arrayToken)
+            btnJoin.isEnabled = false
+            btnRecord.isVisible = true
+            btnStop.isVisible = true
+        }
+        btnRecord.setOnClickListener {
+            //debugText.setText("Record Button Pressed")
+            recordingDevices = arrayOfNulls(connectedDevices.size)
+            stoppedDevices = arrayOfNulls(connectedDevices.size)
+            ed = Instant.now().toEpochMilli().toString()
+            val data = JSONObject()
+            data.put("command","Start")
+            data.put("timedate",ed)
+            data.put("numDevices",connectedDevices.size.toString())
+            data.put("room",arrayToken)
+            data.put("master",socketManager.socket.id().toString())
+            socketManager.sendDistanceRecord(data)
+        }
+        btnStop.setOnClickListener {
+            debugText.setText("Stop Button Pressed")
+            val data = JSONObject()
+            data.put("command","Stop")
+            data.put("room",arrayToken)
+            data.put("timedate",ed)
+            data.put("master",socketManager.socket.id().toString())
+            socketManager.sendDistanceRecord(data)
+        }
     }
-
     override fun onDevNumAssigned(devNum: String) {
         //TODO("Not yet implemented -> Add UI component")
         //debugText.text = devNum.toString()
         deviceText.text = devNum.toString()
         //var test = devNum
     }
-
     override fun onNumberOfDevices(number: String) {
-        //TODO("Not yet implemented")
         // Number of devices needed??
         var num = number
     }
-
     override fun onReceivedDistanceRecord(data: JSONObject) {
-        //TODO("Not yet implemented")
         val timedate = data.getString("timedate")
         val command = data.getString("command")
         val room = data.getString("room")
-        val master = data.getString("master")
+        val datamaster = data.getString("master")
         if(command == "Start") {
             //Start recording
             debugText.setText("Start Recieved")
             // Start recording audio
-            startRecording(timedate,room,master)
+            startRecording(timedate,room,datamaster)
         }
-        if(command == "Stop") {
+        else if(command == "Stop") {
             debugText.setText("Stop Recieved")
-            stopRecording(timedate,room,master)
-
+            stopRecording(timedate,room,datamaster)
+        }
+        else if(command == "Started" && master) {
+            debugText.setText("Received Started from device")
+            val device = data.getString("device")
+            val devInArray = data.getString("devinarray")
+            recordingDevices[devInArray.toInt()-1] = 1
+            val allRecording = recordingDevices.all { it == 1 }
+            if(recordingDevices.size == connectedDevices.size && allRecording) {
+                //Start the PRBS sequences
+                val sendData = JSONObject()
+                sendData.put("timedate",timedate)
+                sendData.put("command","PRBSPlay")
+                sendData.put("device",connectedDevices[0].toString())
+                sendData.put("room",room)
+                sendData.put("master",datamaster)
+                socketManager.sendDistanceRecord(sendData)
+            }
+        }
+        else if(command == "Stopped" && master) {
+            debugText.setText("Received Started from device")
+            val device = data.getString("device")
+            val devInArray = data.getString("devinarray")
+            stoppedDevices[devInArray.toInt()-1] = 1
+            val allStopped = stoppedDevices.all { it == 1 }
+            if(stoppedDevices.size == connectedDevices.size && allStopped) {
+                val sendData = JSONObject()
+                sendData.put("timedate",timedate)
+                sendData.put("command","SyncAudio")
+                sendData.put("devices",connectedDevices.size)
+                sendData.put("room",room)
+                sendData.put("master",datamaster)
+                socketManager.sendDistanceRecord(sendData)
+            }
+        }
+    }
+    override fun onReceivedJoinedRoom(data: JSONObject) {
+        debugText.setText("Joined Room Recieved")
+        if(master) {
+            val id = data.getString("id")
+            connectedDevices.add(id)
+            val numDevices = connectedDevices.size
+            val sendData = JSONObject()
+            sendData.put("device",numDevices)
+            sendData.put("id",id)
+            sendData.put("room",arrayToken)
+            val array: Array<String> = connectedDevices.toTypedArray()
+            val sendData1 = JSONObject()
+            sendData1.put("ids",array)
+            sendData1.put("room",arrayToken)
+            socketManager.sendAssignDevice(sendData)
+            socketManager.sendDeviceIds(sendData1)
+        } else {
+            //Error handling.
         }
     }
 
@@ -130,7 +218,6 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
         if(requestCode == REQUEST_CODE)
             permissionGranted = grantResults[0] == PackageManager.PERMISSION_GRANTED
     }
-
     private fun checkUnprocessedAudioSupport(){
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val isUnprocessedAudioSupported = audioManager.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED)
@@ -151,7 +238,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
         // AudioRecord has more control compared to MediaRecord
         val sampleRate = 48000
         val channelConfig = AudioFormat.CHANNEL_IN_MONO
-        val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+        val audioFormat = AudioFormat.ENCODING_PCM_16BIT //16bit int for older devices
+        //val audioFormat = AudioFormat.ENCODING_PCM_FLOAT // 32Bit float supported on older devices?
         val bufferSize = AudioRecord.getMinBufferSize(sampleRate,channelConfig,audioFormat)
 
         if (ActivityCompat.checkSelfPermission(
@@ -222,6 +310,12 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
         //data.put("samples",buffer.size)
         //data.put("totsamples",totalsamples)
         socketManager.sendAudio(data)
+    }
+    fun generateRandomCode(length: Int = 4): String {
+        val chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz0123456789"
+        return (1..length)
+            .map { chars.random() }
+            .joinToString("")
     }
 
 }

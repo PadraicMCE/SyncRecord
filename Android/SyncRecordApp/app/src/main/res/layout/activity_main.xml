@@ -22,13 +22,15 @@
 
     <Button
         android:id="@+id/joinButton"
-        android:layout_width="113dp"
-        android:layout_height="69dp"
+        android:layout_width="115dp"
+        android:layout_height="70dp"
         android:text="Join Array"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.734"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/IDInput" />
+        app:layout_constraintTop_toBottomOf="@+id/IDInput"
+        app:layout_constraintVertical_bias="0.485" />
 
     <TextView
         android:id="@+id/textView"
@@ -40,40 +42,60 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
-        android:id="@+id/textViewRoomStatic"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="76dp"
-        android:layout_marginTop="68dp"
-        android:text="Room ID:"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <TextView
         android:id="@+id/textViewRoom"
         android:layout_width="123dp"
         android:layout_height="18dp"
         android:layout_marginStart="4dp"
-        android:layout_marginTop="68dp"
+        android:layout_marginTop="104dp"
         app:layout_constraintStart_toEndOf="@+id/textViewRoomStatic"
         app:layout_constraintTop_toTopOf="parent" />
-
-    <TextView
-        android:id="@+id/textViewDevNumStatic"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="76dp"
-        android:layout_marginTop="20dp"
-        android:text="Device Number:"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/textViewRoomStatic" />
 
     <TextView
         android:id="@+id/textViewDevNum"
         android:layout_width="81dp"
         android:layout_height="19dp"
         android:layout_marginStart="4dp"
-        android:layout_marginTop="20dp"
+        android:layout_marginTop="28dp"
         app:layout_constraintStart_toEndOf="@+id/textViewDevNumStatic"
         app:layout_constraintTop_toBottomOf="@+id/textViewRoom" />
+
+    <TextView
+        android:id="@+id/textViewRoomStatic"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="72dp"
+        android:layout_marginTop="104dp"
+        android:text="Room ID:"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/textViewDevNumStatic"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="72dp"
+        android:layout_marginTop="28dp"
+        android:text="Device Number:"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/textViewRoomStatic" />
+
+    <ImageView
+        android:id="@+id/imageView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:srcCompat="@drawable/banner" />
+
+    <Button
+        android:id="@+id/createButton"
+        android:layout_width="115dp"
+        android:layout_height="70dp"
+        android:text="Create Array"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/joinButton"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/IDInput" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

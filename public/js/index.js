@@ -773,7 +773,8 @@ function StopRecording()
     socket.emit('distanceRecord',{
         room: roomToken,
         command: 'Stop',
-        timedate: timedate
+        timedate: timedate,
+        master: socket.id
     });
 
 }

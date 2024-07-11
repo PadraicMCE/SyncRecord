@@ -57,6 +57,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
         // Interface
         val btnJoin: Button = findViewById(R.id.joinButton)
         val inputID: EditText = findViewById(R.id.IDInput)
+        val btnCreate: Button = findViewById(R.id.createButton)
         debugText = findViewById(R.id.textView)
         roomText = findViewById(R.id.textViewRoom)
         deviceText = findViewById(R.id.textViewDevNum)
@@ -84,6 +85,9 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
             } else {
                 //Notification to user
             }
+        }
+        btnCreate.setOnClickListener {
+            //Create new array token
         }
 
     }
@@ -116,6 +120,10 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
         if(command == "Stop") {
             debugText.setText("Stop Recieved")
             stopRecording(timedate,room,master)
+
+        }
+        if(command == "PRBSPlay") {
+            //TODO add audio play
 
         }
     }

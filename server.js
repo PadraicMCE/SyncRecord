@@ -33,21 +33,21 @@ const { deserialize } = require('v8');
 
 const PORT = 8443 || process.env.PORT;
 // For remote deployment ssl certificates:
-/*
+
 var https_options = {
 	key: fs.readFileSync("./ssl/privkey.pem"),
     cert: fs.readFileSync("./ssl/cert.pem"),
     ca: fs.readFileSync("./ssl/fullchain.pem")
 }; 
-*/
+
 
 // For local testing a self-signed ssl cert is used:
-
+/*
 var https_options = {
 	key: fs.readFileSync("./ssl/openssl/privkey.pem"),
     cert: fs.readFileSync("./ssl/openssl/cert.pem")
 };
-
+*/
 
 const app = express();
 const server = https.createServer(https_options, app);
@@ -70,9 +70,11 @@ io.on('connection', socket => {
     socket.emit('message', 'Welcome to server');
 
 	// Log every socket message received
+	/*
     socket.onAny((event, ...args) => {
         console.log(`Received event: ${event}, with data:`, args);
     });
+	*/
 
 	socket.on('disconnect', function(message)
 	{

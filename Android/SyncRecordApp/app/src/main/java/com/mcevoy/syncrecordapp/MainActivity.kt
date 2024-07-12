@@ -17,11 +17,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
-import android.util.Log
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.view.isVisible
 import java.time.Instant
+import android.media.MediaPlayer
+import android.os.Handler
+import android.os.Looper
 
 //Request device microphone
 const val REQUEST_CODE = 200
@@ -36,6 +38,9 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
     private var isRecording = false
     private lateinit var audioRecord: AudioRecord
     private lateinit var recordingThread: Thread
+    // Playing audio
+    private lateinit var mediaPlayer: MediaPlayer
+    private lateinit var readyDevices: Array<Int?>
     // Variables for master device
     private var master = false
     private lateinit var arrayToken: String
@@ -145,16 +150,16 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
         val datamaster = data.getString("master")
         if(command == "Start") {
             //Start recording
-            debugText.setText("Start Recieved")
+            debugText.text = "Start Received"
             // Start recording audio
             startRecording(timedate,room,datamaster)
         }
         else if(command == "Stop") {
-            debugText.setText("Stop Recieved")
+            debugText.text = "Stop Received"
             stopRecording(timedate,room,datamaster)
         }
         else if(command == "Started" && master) {
-            debugText.setText("Received Started from device")
+            debugText.text = "Received Started from device"
             val device = data.getString("device")
             val devInArray = data.getString("devinarray")
             recordingDevices[devInArray.toInt()-1] = 1
@@ -171,7 +176,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
             }
         }
         else if(command == "Stopped" && master) {
-            debugText.setText("Received Started from device")
+            debugText.text = "Received Started from device"
             val device = data.getString("device")
             val devInArray = data.getString("devinarray")
             stoppedDevices[devInArray.toInt()-1] = 1
@@ -186,6 +191,55 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
                 socketManager.sendDistanceRecord(sendData)
             }
         }
+        else if(command == "PRBSPlay") {
+            mediaPlayer = MediaPlayer.create(this, R.raw.prbs1)
+            mediaPlayer.start()
+            mediaPlayer.setOnCompletionListener {
+                // Tell master this device has finished playing the PRBS
+                val devinarray = data.get("devinarray")
+                val sendData = JSONObject()
+                sendData.put("timedate",timedate)
+                sendData.put("command","PRBSFinished")
+                sendData.put("room",room)
+                sendData.put("master",datamaster)
+                sendData.put("deviceNo",deviceText.text)
+                sendData.put("devinarray",deviceText.text)
+                // Send message
+                socketManager.sendDistanceRecord(sendData)
+            }
+        }
+        else if(command == "PRBSFinished" && master) {
+            val devInArray = data.getString("devinarray")
+            // If all devices are not finished -> Send play command to next device
+            readyDevices[devInArray.toInt()-1] = 1
+            val allFinished = readyDevices.all { it == 1 }
+            if(readyDevices.size == connectedDevices.size && allFinished) {
+                // All devices finished playing PRBS
+                // Run Python script to determine time lags
+                val sendData = JSONObject()
+                sendData.put("timedate",timedate)
+                sendData.put("command","Sync")
+                sendData.put("room",room)
+                sendData.put("master",datamaster)
+                // Send message after 1 second
+                val handler = Handler(Looper.getMainLooper())
+                handler.postDelayed({
+                    socketManager.sendDistanceRecord(sendData)
+                }, 1000)
+            }
+            else {
+                // All devices not finished -> Send play command to the next device
+                val sendData = JSONObject()
+                sendData.put("timedate",timedate)
+                sendData.put("command","PRBSPlay")
+                sendData.put("device",devInArray.toInt()+1)
+                sendData.put("room",room)
+                sendData.put("master",datamaster)
+                // Send message
+                socketManager.sendDistanceRecord(sendData)
+            }
+        }
+
     }
     override fun onReceivedJoinedRoom(data: JSONObject) {
         debugText.setText("Joined Room Recieved")

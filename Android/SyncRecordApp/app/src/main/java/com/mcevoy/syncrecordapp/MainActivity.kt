@@ -277,7 +277,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
         val isUnprocessedAudioSupported = audioManager.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED)
 
         if (isUnprocessedAudioSupported != null && isUnprocessedAudioSupported == "true") {
-            //Toast.makeText(this, "Unprocessed audio source is supported.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Unprocessed audio source is supported.", Toast.LENGTH_LONG).show()
         } else {
             Toast.makeText(this, "Unprocessed audio source is not supported on this device. Results might be inaccurate", Toast.LENGTH_LONG).show()
         }

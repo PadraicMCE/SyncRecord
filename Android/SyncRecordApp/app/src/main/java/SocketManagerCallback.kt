@@ -11,4 +11,7 @@ interface SocketManagerCallback {
     fun onNumberOfDevices(number: String)
     fun onReceivedDistanceRecord(data: JSONObject)
     fun onReceivedJoinedRoom(data: JSONObject)
+    fun setButtonsActive()
+    fun connectionErrorMessage(message: String)
+    fun sendInput(input: String)
 }

@@ -46,6 +46,7 @@ dependencies {
         exclude(group = "org.json", module = "json")
     }
     implementation("org.json:json:20210307")
+    implementation(libs.androidx.recyclerview)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

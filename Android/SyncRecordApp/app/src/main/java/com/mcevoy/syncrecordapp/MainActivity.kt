@@ -1,7 +1,8 @@
 package com.mcevoy.syncrecordapp
-
+//TODO: Disable buttons when socket connection with host is lost.
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -24,10 +25,17 @@ import java.time.Instant
 import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
+import android.widget.ImageButton
+import android.widget.PopupMenu
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 
 //Request device microphone
 const val REQUEST_CODE = 200
-class MainActivity : AppCompatActivity(), SocketManagerCallback {
+class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogFragment.OnInputListener {
     private lateinit var socketManager: SocketManager
     private lateinit var debugText: TextView
     private lateinit var roomText: TextView
@@ -41,6 +49,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
     // Playing audio
     private lateinit var mediaPlayer: MediaPlayer
     private lateinit var readyDevices: Array<Int?>
+    //private val readyDevices: MutableList<Int?> = mutableListOf()
     // Variables for master device
     private var master = false
     private lateinit var arrayToken: String
@@ -48,6 +57,17 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
     private lateinit var ed: String
     private lateinit var recordingDevices: Array<Int?>
     private lateinit var stoppedDevices: Array<Int?>
+    private var socketAddress: String = "https://syncrecord.eu:8443"
+    //private var socketAddress: String = "https://192.168.1.1:8443"
+    //buttons
+    private lateinit var btnJoin: Button
+    private lateinit var btnCreate: Button
+    private lateinit var btnRecord: Button
+    private lateinit var btnStop: Button
+    // Download audio files
+    private lateinit var downloadFilesRecyclerView: RecyclerView
+    private lateinit var downloadFilesAdapter: DownloadFilesAdapter
+    private val downloadItems = mutableListOf<DownloadItem>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,17 +85,17 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
         if(!permissionGranted)
             ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE)
 
-        //socketManager = SocketManager("https://192.168.1.6:8443",this)
-        socketManager = SocketManager("https://syncrecord.eu:8443",this)
         // Interface
-        val btnJoin: Button = findViewById(R.id.joinButton)
+        btnJoin = findViewById(R.id.joinButton)
         val inputID: EditText = findViewById(R.id.IDInput)
-        val btnCreate: Button = findViewById(R.id.createButton)
-        val btnRecord: Button = findViewById(R.id.recordButton)
-        val btnStop: Button = findViewById(R.id.stopButton)
+        btnCreate = findViewById(R.id.createButton)
+        btnRecord = findViewById(R.id.recordButton)
+        btnStop = findViewById(R.id.stopButton)
         debugText = findViewById(R.id.textView)
         roomText = findViewById(R.id.textViewRoom)
         deviceText = findViewById(R.id.textViewDevNum)
+
+        socketManager = SocketManager(socketAddress,this)
 
         inputID.setOnEditorActionListener{v, actionId, event ->
             if (actionId == EditorInfo.IME_ACTION_DONE){
@@ -114,6 +134,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
             //debugText.setText("Record Button Pressed")
             recordingDevices = arrayOfNulls(connectedDevices.size)
             stoppedDevices = arrayOfNulls(connectedDevices.size)
+            readyDevices = arrayOfNulls(connectedDevices.size)
             ed = Instant.now().toEpochMilli().toString()
             val data = JSONObject()
             data.put("command","Start")
@@ -132,11 +153,24 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
             data.put("master",socketManager.socket.id().toString())
             socketManager.sendDistanceRecord(data)
         }
+        val buttonOpenMenu: ImageButton = findViewById(R.id.button_open_menu)
+        buttonOpenMenu.setOnClickListener {
+            showPopupMenu(it)
+        }
+
+        //Download audio files list
+        //setContentView(R.layout.activity_downloads)
+        //downloadFilesRecyclerView = findViewById(R.id.downloadFilesRecyclerView)
+        //downloadFilesRecyclerView.layoutManager = LinearLayoutManager(this)
+        //downloadFilesAdapter = DownloadFilesAdapter(downloadItems)
+        //downloadFilesRecyclerView.adapter = downloadFilesAdapter
     }
     override fun onDevNumAssigned(devNum: String) {
         //TODO("Not yet implemented -> Add UI component")
         //debugText.text = devNum.toString()
-        deviceText.text = devNum.toString()
+        runOnUiThread {
+            deviceText.text = devNum.toString()
+        }
         //var test = devNum
     }
     override fun onNumberOfDevices(number: String) {
@@ -150,16 +184,22 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
         val datamaster = data.getString("master")
         if(command == "Start") {
             //Start recording
-            debugText.text = "Start Received"
+            runOnUiThread {
+                debugText.text = "Start Received"
+            }
             // Start recording audio
             startRecording(timedate,room,datamaster)
         }
         else if(command == "Stop") {
-            debugText.text = "Stop Received"
+            runOnUiThread {
+                debugText.text = "Stop Received"
+            }
             stopRecording(timedate,room,datamaster)
         }
         else if(command == "Started" && master) {
-            debugText.text = "Received Started from device"
+            runOnUiThread {
+                debugText.text = "Received Started from device"
+            }
             val device = data.getString("device")
             val devInArray = data.getString("devinarray")
             recordingDevices[devInArray.toInt()-1] = 1
@@ -176,8 +216,10 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
             }
         }
         else if(command == "Stopped" && master) {
-            debugText.text = "Received Started from device"
-            val device = data.getString("device")
+            runOnUiThread {
+                debugText.text = "Received Started from device"
+            }
+            //val device = data.getString("device")
             val devInArray = data.getString("devinarray")
             stoppedDevices[devInArray.toInt()-1] = 1
             val allStopped = stoppedDevices.all { it == 1 }
@@ -192,11 +234,18 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
             }
         }
         else if(command == "PRBSPlay") {
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    "Received PRBS Play",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
             mediaPlayer = MediaPlayer.create(this, R.raw.prbs1)
             mediaPlayer.start()
             mediaPlayer.setOnCompletionListener {
                 // Tell master this device has finished playing the PRBS
-                val devinarray = data.get("devinarray")
+                //val devinarray = data.get("devinarray")
                 val sendData = JSONObject()
                 sendData.put("timedate",timedate)
                 sendData.put("command","PRBSFinished")
@@ -213,6 +262,13 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
             // If all devices are not finished -> Send play command to next device
             readyDevices[devInArray.toInt()-1] = 1
             val allFinished = readyDevices.all { it == 1 }
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    "Received PRBS finished from Device $devInArray All devices ready: $allFinished",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
             if(readyDevices.size == connectedDevices.size && allFinished) {
                 // All devices finished playing PRBS
                 // Run Python script to determine time lags
@@ -232,17 +288,29 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
                 val sendData = JSONObject()
                 sendData.put("timedate",timedate)
                 sendData.put("command","PRBSPlay")
-                sendData.put("device",devInArray.toInt()+1)
+                sendData.put("device",connectedDevices[devInArray.toInt()])
                 sendData.put("room",room)
                 sendData.put("master",datamaster)
                 // Send message
-                socketManager.sendDistanceRecord(sendData)
+                val handler = Handler(Looper.getMainLooper())
+                handler.postDelayed({
+                    socketManager.sendDistanceRecord(sendData)
+                }, 500)
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        "Sent PRBS play to Device ${devInArray.toInt()+1}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
 
     }
     override fun onReceivedJoinedRoom(data: JSONObject) {
-        debugText.setText("Joined Room Recieved")
+        runOnUiThread {
+            debugText.setText("Joined Room Recieved")
+        }
         if(master) {
             val id = data.getString("id")
             connectedDevices.add(id)
@@ -261,6 +329,32 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
             //Error handling.
         }
     }
+
+    //Options menu
+    private fun showPopupMenu(view: android.view.View) {
+        val popup = PopupMenu(this, view)
+        val inflater: MenuInflater = popup.menuInflater
+        inflater.inflate(R.menu.options_menu, popup.menu)
+        popup.setOnMenuItemClickListener { item: MenuItem ->
+            when (item.itemId) {
+                R.id.action_socket_address -> {
+                    // Handle settings click
+                    val dialog = SettingsDialogFragment()
+                    dialog.show(supportFragmentManager, "SettingsDialog")
+                    true
+                }
+                R.id.action_view_downloads -> {
+                    // Open the DownloadsActivity when the menu item is clicked
+                    val intent = Intent(this, DownloadsActivity::class.java)
+                    startActivity(intent)
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
+    }
+
 
     // Recording functions
     override fun onRequestPermissionsResult(
@@ -339,6 +433,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
         data.put("devinarray",deviceText.text.toString())
         data.put("room",room)
         data.put("master",master)
+        data.put("device",socketManager.socket.id().toString())
         socketManager.sendDistanceRecord(data)
     }
     private fun stopRecording(timedate: String, room: String, master: String){
@@ -372,4 +467,39 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback {
             .joinToString("")
     }
 
+    override fun setButtonsActive() {
+        runOnUiThread {
+            btnJoin.isVisible = true
+            btnCreate.isVisible = true
+        }
+    }
+
+    override fun connectionErrorMessage(message: String)
+    {
+        runOnUiThread {
+            debugText.text = message
+        }
+    }
+
+    //TODO: Fix the socket address error text showing after correct connection
+    override fun sendInput(input: String) {
+        // Set the received input to a variable
+        socketAddress = input
+        socketManager = SocketManager(socketAddress,this)
+        //Toast.makeText(this, input, Toast.LENGTH_LONG).show()
+        //Log.d("MainActivity", "Received input from dialog: $receivedInput")
+    }
+
+    // Downloading audio files from server
+    private fun addNewDownloadLink(fileName: String, downloadLink: String) {
+        val newItem = DownloadItem(fileName, downloadLink)
+        downloadFilesAdapter.addDownloadItem(newItem)
+    }
+
+    // Socket.IO code to handle receiving new download links
+    private fun onDownloadLinkReceived(fileName: String, downloadLink: String) {
+        runOnUiThread {
+            addNewDownloadLink(fileName, downloadLink)
+        }
+    }
 }

@@ -206,7 +206,7 @@ io.on('connection', socket => {
 
 	socket.on('distanceRecord', function(message)
 	{
-		console.log('Received "distanceRecord" with command: '+message.command+' from: '+socket.id);
+		//console.log('Received "distanceRecord" with command: '+message.command+' from: '+socket.id);
 		if(message.command == 'Started')
 		{
 			try{
@@ -232,6 +232,7 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'PRBSPlay')
 		{
+			console.log('Received "distanceRecord" with command: '+message.command+' from: '+socket.id + 'to:'+message.device);
 			io.to(message.device).emit('distanceRecord',{
 				timedate: message.timedate,
 				command: message.command,
@@ -463,6 +464,7 @@ io.on('connection', socket => {
 			});
 			//Run python script to synchronise audio channels
 			//Run python script to determine synchronisation of audio channels
+			/*
 			var arguments = [];
 			arguments.push('./public/tmp/'+message.room+'/'+message.timedate+'_sync');
 			for (let i = 1; i <= message.devices; i++)
@@ -497,6 +499,7 @@ io.on('connection', socket => {
 				}
 				// Commands to send download links to master device
 			});
+			*/
 		}
 	});
 	

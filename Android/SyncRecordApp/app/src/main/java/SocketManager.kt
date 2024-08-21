@@ -23,20 +23,26 @@ class SocketManager (serverurl: String, private val callback: SocketManagerCallb
             socket = IO.socket(uri,opts)
             initialiseSocketListeners()
             socket.connect()
+            callback.connectionErrorMessage("")
             //println("Connected to socket")
         } catch (e: URISyntaxException) {
             // Error handle
             println("Error connecting to socket")
+            callback.connectionErrorMessage("Error connecting to socket host. Check the socket host address in settings.")
         }
     }
     private fun initialiseSocketListeners(){
         socket.on(Socket.EVENT_CONNECT, Emitter.Listener {
             // Connection function?
             println("Connected to server")
+            // MainActivity buttons become active
+            callback.setButtonsActive()
+            callback.connectionErrorMessage("")
         })
         socket.on(Socket.EVENT_CONNECT_ERROR) { args ->
             val error = args[0] as EngineIOException
             Log.e("SocketManager", "Socket connection error: ${error.message}")
+            callback.connectionErrorMessage("Error connecting to socket host. Check the socket host address in settings.")
         }
         socket.on("assignDevice", Emitter.Listener { args ->
             val devicenum = args[0] as String

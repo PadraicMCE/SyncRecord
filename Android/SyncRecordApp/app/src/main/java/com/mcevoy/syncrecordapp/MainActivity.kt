@@ -241,7 +241,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     Toast.LENGTH_LONG
                 ).show()
             }
-            mediaPlayer = MediaPlayer.create(this, R.raw.prbs1)
+            mediaPlayer = MediaPlayer.create(this, R.raw.prbs1_3)
             mediaPlayer.start()
             mediaPlayer.setOnCompletionListener {
                 // Tell master this device has finished playing the PRBS

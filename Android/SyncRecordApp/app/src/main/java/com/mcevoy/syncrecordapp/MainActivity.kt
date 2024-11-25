@@ -4,10 +4,13 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Resources
+import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.AudioTrack
 import android.os.Bundle
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
@@ -25,13 +28,20 @@ import java.time.Instant
 import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore.Audio
+import android.util.Log
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.widget.ImageButton
 import android.widget.PopupMenu
+//import androidx.privacysandbox.tools.core.generator.build
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 //Request device microphone
 const val REQUEST_CODE = 200
@@ -241,9 +251,11 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     Toast.LENGTH_LONG
                 ).show()
             }
-            mediaPlayer = MediaPlayer.create(this, R.raw.prbs1_3)
-            mediaPlayer.start()
-            mediaPlayer.setOnCompletionListener {
+
+            //mediaPlayer = MediaPlayer.create(this, R.raw.prbs1_seq_100)
+            //mediaPlayer.start()
+            //mediaPlayer.setOnCompletionListener {
+            playBinaryAudio {
                 // Tell master this device has finished playing the PRBS
                 //val devinarray = data.get("devinarray")
                 val sendData = JSONObject()
@@ -405,12 +417,20 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             return
         }
         audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.UNPROCESSED,
             sampleRate,
             channelConfig,
             audioFormat,
             bufferSize
         )
+
+        //Check if audioRecord is initialized with the correct sampling rate.
+        if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+            runOnUiThread {
+                debugText.setText("Sampling rate not set")
+            }
+            return;
+        }
 
         audioRecord.startRecording()
         isRecording = true
@@ -502,4 +522,61 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             addNewDownloadLink(fileName, downloadLink)
         }
     }
+
+    private fun playBinaryAudio(onCompletion: () -> Unit) {
+        val sampleRate = 48000;
+        val channelConfig = AudioFormat.CHANNEL_OUT_MONO;
+        val audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+        try {
+            val inputStream = resources.openRawResource(R.raw.prbs1_3_delta)
+            val audioData = inputStream.readBytes()
+            inputStream.close()
+            //Calculate minimum buffer size
+            val buffersize = audioData.size
+            //Create and configure AudioTrack
+            val audioTrack = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_UNKNOWN)
+                        .build()
+                )
+                .setAudioFormat(AudioFormat.Builder()
+                    .setEncoding(audioFormat)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(channelConfig)
+                    .build())
+                .setBufferSizeInBytes(buffersize)
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .build()
+            //Write audio data to the AudioTrack
+            audioTrack.write(audioData,0,audioData.size)
+            //Set up listener to trigger a command when playback finished
+            audioTrack.setNotificationMarkerPosition(audioData.size / (16 / 8))
+            //audioTrack.setNotificationMarkerPosition(audioData.size/2)
+            audioTrack.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
+                override fun onMarkerReached(track: AudioTrack?) {
+                    //Run onCompletion() command
+                    onCompletion()
+                }
+                override fun onPeriodicNotification(track: AudioTrack?) {
+                    //Needed?
+                }
+            })
+
+            //Play the audio
+            audioTrack.play()
+
+            CoroutineScope(Dispatchers.IO).launch {
+                //wait for playback duration
+                delay(((audioData.size.toDouble() / (sampleRate * 2 * 1)) * 1000).toLong())
+                //delay(audioData.size/(sampleRate*2.0).toLong()*1000)
+                audioTrack.release()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Log.e("AudioPlayback", "Error occurred during playback: ${e.message}")
+        }
+    }
 }
+

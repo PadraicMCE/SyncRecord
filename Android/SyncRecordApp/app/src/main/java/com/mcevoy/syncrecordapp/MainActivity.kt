@@ -33,6 +33,7 @@ import android.util.Log
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
+import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.PopupMenu
 //import androidx.privacysandbox.tools.core.generator.build
@@ -88,6 +89,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
+        // Keep the screen on
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         //Check if access to unprocessed audio data is available on device
         checkUnprocessedAudioSupport()
         // Get permissions to access the device microphone
@@ -155,7 +158,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             socketManager.sendDistanceRecord(data)
         }
         btnStop.setOnClickListener {
-            debugText.setText("Stop Button Pressed")
+            //debugText.setText("Stop Button Pressed")
             val data = JSONObject()
             data.put("command","Stop")
             data.put("room",arrayToken)
@@ -194,22 +197,28 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         val datamaster = data.getString("master")
         if(command == "Start") {
             //Start recording
+            /*
             runOnUiThread {
                 debugText.text = "Start Received"
             }
+            */
             // Start recording audio
             startRecording(timedate,room,datamaster)
         }
         else if(command == "Stop") {
+            /*
             runOnUiThread {
                 debugText.text = "Stop Received"
             }
+            */
             stopRecording(timedate,room,datamaster)
         }
         else if(command == "Started" && master) {
+            /*
             runOnUiThread {
                 debugText.text = "Received Started from device"
             }
+            */
             val device = data.getString("device")
             val devInArray = data.getString("devinarray")
             recordingDevices[devInArray.toInt()-1] = 1
@@ -226,9 +235,11 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             }
         }
         else if(command == "Stopped" && master) {
+            /*
             runOnUiThread {
                 debugText.text = "Received Started from device"
             }
+            */
             //val device = data.getString("device")
             val devInArray = data.getString("devinarray")
             stoppedDevices[devInArray.toInt()-1] = 1
@@ -244,6 +255,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             }
         }
         else if(command == "PRBSPlay") {
+            /*
             runOnUiThread {
                 Toast.makeText(
                     this,
@@ -251,7 +263,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     Toast.LENGTH_LONG
                 ).show()
             }
-
+            */
             //mediaPlayer = MediaPlayer.create(this, R.raw.prbs1_seq_100)
             //mediaPlayer.start()
             //mediaPlayer.setOnCompletionListener {
@@ -274,15 +286,18 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             // If all devices are not finished -> Send play command to next device
             readyDevices[devInArray.toInt()-1] = 1
             val allFinished = readyDevices.all { it == 1 }
-            runOnUiThread {
-                Toast.makeText(
-                    this,
-                    "Received PRBS finished from Device $devInArray All devices ready: $allFinished",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+
+
+
             if(readyDevices.size == connectedDevices.size && allFinished) {
                 // All devices finished playing PRBS
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        "Received PRBS finished from Device $devInArray All devices ready: $allFinished",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
                 // Run Python script to determine time lags
                 val sendData = JSONObject()
                 sendData.put("timedate",timedate)
@@ -308,6 +323,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 handler.postDelayed({
                     socketManager.sendDistanceRecord(sendData)
                 }, 500)
+                /*
                 runOnUiThread {
                     Toast.makeText(
                         this,
@@ -315,14 +331,17 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                         Toast.LENGTH_LONG
                     ).show()
                 }
+                */
             }
         }
 
     }
     override fun onReceivedJoinedRoom(data: JSONObject) {
+        /*
         runOnUiThread {
             debugText.setText("Joined Room Recieved")
         }
+        */
         if(master) {
             val id = data.getString("id")
             connectedDevices.add(id)
@@ -418,6 +437,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         }
         audioRecord = AudioRecord(
             MediaRecorder.AudioSource.UNPROCESSED,
+            //MediaRecorder.AudioSource.MIC,
             sampleRate,
             channelConfig,
             audioFormat,
@@ -426,22 +446,28 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
 
         //Check if audioRecord is initialized with the correct sampling rate.
         if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+            // Add error handling.
+            /*
             runOnUiThread {
                 debugText.setText("Sampling rate not set")
             }
+            */
             return;
         }
-
+        var totalData = 0L
         audioRecord.startRecording()
         isRecording = true
 
         recordingThread = Thread{
             //writeAudioDataToFile(bufferSize)
             val buffer = ByteArray(bufferSize)
+
             while (isRecording) {
+                // TODO: Additional error handling here.
                 val read = audioRecord.read(buffer,0,buffer.size)
                 if(read > 0) {
-                    sendAudioData(buffer,timedate,room)
+                    totalData += buffer.size.toLong()
+                    sendAudioData(buffer,timedate,room,totalData)
                 }
             }
         }
@@ -470,12 +496,13 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         data.put("master",master)
         socketManager.sendDistanceRecord(data)
     }
-    private fun sendAudioData(buffer: ByteArray,timedate: String,room: String){
+    private fun sendAudioData(buffer: ByteArray,timedate: String,room: String, totaldata: Long){
         val data = JSONObject()
         data.put("audioData",buffer)
         data.put("timedate",timedate.toString())
         data.put("room",room.toString())
         data.put("device",deviceText.text.toString())
+        data.put("totData",totaldata)
         //data.put("samples",buffer.size)
         //data.put("totsamples",totalsamples)
         socketManager.sendAudio(data)
@@ -532,7 +559,13 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             val audioData = inputStream.readBytes()
             inputStream.close()
             //Calculate minimum buffer size
-            val buffersize = audioData.size
+            val buffersize = audioData.size //* 2
+            //val buffersize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+            /*
+            runOnUiThread {
+                debugText.text = "Buffer size: " + buffersize.toString() + "  Audio data: " + audioData.size.toString()
+            }
+            */
             //Create and configure AudioTrack
             val audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(
@@ -552,8 +585,21 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             //Write audio data to the AudioTrack
             audioTrack.write(audioData,0,audioData.size)
             //Set up listener to trigger a command when playback finished
-            audioTrack.setNotificationMarkerPosition(audioData.size / (16 / 8))
-            //audioTrack.setNotificationMarkerPosition(audioData.size/2)
+            //audioTrack.setNotificationMarkerPosition(audioData.size / (16 / 8))
+            //TODO: Change
+            audioTrack.setNotificationMarkerPosition(765)
+            audioTrack.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
+                override fun onMarkerReached(track: AudioTrack?) {
+                    // Run onCompletion() command
+                    onCompletion()
+                }
+
+                override fun onPeriodicNotification(track: AudioTrack?) {
+                    // Optional: monitor playback periodically (if needed)
+                }
+            })
+
+            /*
             audioTrack.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
                 override fun onMarkerReached(track: AudioTrack?) {
                     //Run onCompletion() command
@@ -563,13 +609,17 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     //Needed?
                 }
             })
-
+            */
+            //Set the volume 0.0 = min; 1.0 = max
+            audioTrack.setVolume(1.0f)
             //Play the audio
             audioTrack.play()
-
+            //val durationInSeconds = audioData.size / (sampleRate * 2.0) // In seconds, assuming 16-bit audio
             CoroutineScope(Dispatchers.IO).launch {
                 //wait for playback duration
-                delay(((audioData.size.toDouble() / (sampleRate * 2 * 1)) * 1000).toLong())
+                delay(50L)
+                //delay((durationInSeconds * 1000).toLong())  // Convert to milliseconds
+                //delay(((audioData.size.toDouble() / (sampleRate * 2 * 1)) * 1000).toLong())
                 //delay(audioData.size/(sampleRate*2.0).toLong()*1000)
                 audioTrack.release()
             }

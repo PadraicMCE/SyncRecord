@@ -146,7 +146,7 @@ io.on('connection', socket => {
 		//buffer = Buffer.from(message.audioData.buffer);
 		//console.log(buffer.BYTES_PER_ELEMENT);
 		//saveAudioToFile(message.room, filename, buffer);
-		position = message.totsamples;
+		position = message.totData;
 		samples = message.samples;
 		//Check buffers initialised
 		if(!buffers[message.room])
@@ -160,6 +160,11 @@ io.on('connection', socket => {
 		//console.log("Audio data received, samples: "+samples+" ,position: "+position);
 		const bufferData = Buffer.from(message.audioData);
 		//const bufferData = new Float32Array(message.audioData);
+		fs.appendFile('./public/tmp/'+message.room+'/'+message.timedate+'_'+message.device+'BufferLog',
+			'Audio data position received: '+position+'\r',
+			function(err){
+				if(err) throw err;
+			});
 		insertDataAtPosition(buffers[message.room][socket.id],bufferData,position);
 		/*
 		writeFileAtPosition(filename, message.audioData, position, (err) => {
@@ -425,6 +430,35 @@ io.on('connection', socket => {
 				pythonOptions: ['-u'], // get print results in real-time
 				args: arguments
 			};
+			// Create a new PythonShell instance
+			let pyshell = new PythonShell('./ReadAudio.py', options);
+
+			// Capture messages from the Python script
+			pyshell.on('message', function (message) {
+				console.log('Python message:', message);
+			});
+
+			// Capture error messages from the Python script
+			pyshell.on('stderr', function (stderrMessage) {
+				console.error('Python stderr:', stderrMessage);
+			});
+
+			// Handle errors
+			pyshell.on('error', function (error) {
+				console.error('Python error:', error);
+			});
+
+			// Handle when the script finishes
+			pyshell.on('close', function () {
+				console.log('Python script finished.');
+				io.to(message.master).emit('distanceRecord', {
+					timedate: message.timedate,
+					command: 'ReadyForSync',
+					room: message.room,
+					master: message.master
+				});
+			});
+			/*
 			PythonShell.run('./ReadAudio.py', options).then(messages=>
 			{
 				io.to(message.master).emit('distanceRecord',
@@ -435,6 +469,7 @@ io.on('connection', socket => {
 					master: message.master
 				});
 			});
+			*/
 		}
 		else if(message.command == 'SyncAudio')
 		{	
@@ -503,8 +538,20 @@ io.on('connection', socket => {
 		}
 	});
 	
-
+	//Data for phones that support unprocessed audio data
+	socket.on('audio_support', function(message)
+	{
+		console.log(`Device: ${message.device}`)
+		console.log(`Manufacturer: ${message.manufacturer}`)
+		console.log(`Unprocessed audio supported: ${message.audio_source_unprocessed_supported}`)
+		fs.appendFile('./supported_devices',
+			'Manufacturer: '+message.manufacturer+'\r'+'Device: '+message.device+'\r'+'Unprocessed audio supported: '+message.audio_source_unprocessed_supported+'\r-------------------------\r',
+			function(err){
+				if(err) throw err;
+			});
+	});
 });
+
 
 io.of("/").adapter.on("create-room", (room) => {
 	console.log(`room ${room} was created`);
@@ -579,6 +626,9 @@ function insertDataAtPosition(buffer, data, position)
 	}*/
 	//buffer.set(data,position);
 	buffer.splice(position, 0, data);
+	// Add check buffer size not too large -> flush to file now and empty buffer.
+	//Log local time of prbs being played
+
 }
 
 function flushBufferToFile(roomId, deviceId, datestamp, devnum, clear, callback) 

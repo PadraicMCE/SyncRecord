@@ -35,6 +35,7 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.WindowManager
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.PopupMenu
 //import androidx.privacysandbox.tools.core.generator.build
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -107,6 +108,9 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         debugText = findViewById(R.id.textView)
         roomText = findViewById(R.id.textViewRoom)
         deviceText = findViewById(R.id.textViewDevNum)
+        val banner: ImageView = findViewById(R.id.imageView)
+        banner.isVisible = false
+        val buttonOpenMenu: ImageButton = findViewById(R.id.button_open_menu)
 
         socketManager = SocketManager(socketAddress,this)
 
@@ -129,6 +133,19 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 roomText.text = inputID.text.toString()
                 socketManager.sendJoinRoom(inputID.text.toString().trim())
                 btnCreate.isEnabled = false
+                inputID.isVisible = false
+                btnJoin.isVisible = false
+                btnCreate.isVisible = false
+                btnRecord.isVisible = false
+                btnStop.isVisible = false
+                debugText.isVisible = false
+                roomText.isVisible = false
+                deviceText.isVisible = false
+                val roomtextstatic: TextView = findViewById(R.id.textViewRoomStatic)
+                roomtextstatic.isVisible = false
+                val devnumstatic: TextView = findViewById(R.id.textViewDevNumStatic)
+                devnumstatic.isVisible = false
+                buttonOpenMenu.isVisible = false
             } else {
                 //Notification to user
             }
@@ -166,7 +183,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             data.put("master",socketManager.socket.id().toString())
             socketManager.sendDistanceRecord(data)
         }
-        val buttonOpenMenu: ImageButton = findViewById(R.id.button_open_menu)
+
         buttonOpenMenu.setOnClickListener {
             showPopupMenu(it)
         }
@@ -179,10 +196,17 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         //downloadFilesRecyclerView.adapter = downloadFilesAdapter
     }
     override fun onDevNumAssigned(devNum: String) {
-        //TODO("Not yet implemented -> Add UI component")
+        //TODO: For test data gathering, place markers on screnn.
         //debugText.text = devNum.toString()
         runOnUiThread {
             deviceText.text = devNum.toString()
+            btnJoin.isVisible = false
+            btnCreate.isVisible = false
+            btnRecord.isVisible = false
+            btnStop.isVisible = false
+            debugText.isVisible = false
+            roomText.isVisible = false
+            deviceText.isVisible = false
         }
         //var test = devNum
     }

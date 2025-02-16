@@ -56,8 +56,10 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     private var permissions = arrayOf(Manifest.permission.RECORD_AUDIO)
     private var permissionGranted = false
     private var isRecording = false
+    private var recorder_created = false
     private lateinit var audioRecord: AudioRecord
     private lateinit var recordingThread: Thread
+    private var bufferSize: Int = 0
     // Playing audio
     private lateinit var mediaPlayer: MediaPlayer
     private lateinit var readyDevices: Array<Int?>
@@ -410,7 +412,6 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         popup.show()
     }
 
-
     // Recording functions
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -433,51 +434,57 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     }
     // Handle audio recording. A new thread grabs and forwards audio to server
     private fun startRecording(timedate: String, room: String, master: String){
-        if(!permissionGranted){
-            ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE)
-            return
-        }
-        // Start recording audio
-        // AudioRecord has more control compared to MediaRecord
-        val sampleRate = 48000
-        val channelConfig = AudioFormat.CHANNEL_IN_MONO
-        val audioFormat = AudioFormat.ENCODING_PCM_16BIT //16bit int for older devices
-        //val audioFormat = AudioFormat.ENCODING_PCM_FLOAT // 32Bit float supported on older devices?
-        val bufferSize = AudioRecord.getMinBufferSize(sampleRate,channelConfig,audioFormat)
-
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.RECORD_AUDIO
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
-            return
-        }
-        audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.UNPROCESSED,
-            //MediaRecorder.AudioSource.MIC,
-            sampleRate,
-            channelConfig,
-            audioFormat,
-            bufferSize
-        )
-
-        //Check if audioRecord is initialized with the correct sampling rate.
-        if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
-            // Add error handling.
-            /*
-            runOnUiThread {
-                debugText.setText("Sampling rate not set")
+        //TODO: Check if recorder object already created.
+        if(!recorder_created){
+            recorder_created = true
+            if(!permissionGranted){
+                ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE)
+                return
             }
-            */
-            return;
+            // Start recording audio
+            // AudioRecord has more control compared to MediaRecord
+            val sampleRate = 48000
+            val channelConfig = AudioFormat.CHANNEL_IN_MONO
+            val audioFormat = AudioFormat.ENCODING_PCM_16BIT //16bit int for older devices
+            //val audioFormat = AudioFormat.ENCODING_PCM_FLOAT // 32Bit float supported on older devices?
+            bufferSize = AudioRecord.getMinBufferSize(sampleRate,channelConfig,audioFormat) //Optimal buffer size?
+            //val bufferSize = 4590
+
+            if (ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.RECORD_AUDIO
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // TODO: Consider calling
+                //    ActivityCompat#requestPermissions
+                // here to request the missing permissions, and then overriding
+                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                //                                          int[] grantResults)
+                // to handle the case where the user grants the permission. See the documentation
+                // for ActivityCompat#requestPermissions for more details.
+                return
+            }
+            audioRecord = AudioRecord(
+                MediaRecorder.AudioSource.UNPROCESSED,
+                //MediaRecorder.AudioSource.MIC,
+                sampleRate,
+                channelConfig,
+                audioFormat,
+                bufferSize
+            )
+
+            //Check if audioRecord is initialized with the correct sampling rate.
+            if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+                // Add error handling.
+                /*
+                runOnUiThread {
+                    debugText.setText("Sampling rate not set")
+                }
+                */
+                return;
+            }
         }
+
         var totalData = 0L
         audioRecord.startRecording()
         isRecording = true
@@ -490,7 +497,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 // TODO: Additional error handling here.
                 val read = audioRecord.read(buffer,0,buffer.size)
                 if(read > 0) {
-                    totalData += buffer.size.toLong()
+                    //totalData += buffer.size.toLong()
+                    totalData += read.toLong()
                     sendAudioData(buffer,timedate,room,totalData)
                 }
             }
@@ -510,7 +518,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         if(isRecording){
             isRecording = false
             audioRecord.stop()
-            audioRecord.release()
+            //audioRecord.release()
         }
         val data = JSONObject()
         data.put("command","Stopped")

@@ -68,13 +68,14 @@ app.get('/download/:filename', (req, res) => {
 
 io.on('connection', socket => {
     socket.emit('message', 'Welcome to server');
+	socket.emit('sid', socket.id);
 
 	// Log every socket message received
-	/*
-    socket.onAny((event, ...args) => {
-        console.log(`Received event: ${event}, with data:`, args);
-    });
-	*/
+	
+    //socket.onAny((event, ...args) => {
+        //console.log(`Received event: ${event}, with data:`, args);
+    //});
+	
 
 	socket.on('disconnect', function(message)
 	{
@@ -107,7 +108,9 @@ io.on('connection', socket => {
 		io.to(room).emit('joinedRoom',{
 			id: id
 		});
+		// Changed to when assigned a device.
 		//Initialise a new nested buffer for the room
+		/*
 		if(!buffers[room])
 		{
 			buffers[room] = {};
@@ -116,6 +119,7 @@ io.on('connection', socket => {
 		{
 			buffers[room][id] = [];
 		}
+		*/
 	});
 
 	socket.on('assignDevice', function(message)
@@ -125,6 +129,17 @@ io.on('connection', socket => {
         io.to(message.room).emit('Number of Devices',{
             device: message.device
         });
+		if(!buffers[message.room])
+		{
+			buffers[message.room] = {};
+		}
+		if(!buffers[message.room][message.id])
+		{
+			//buffers[message.room][message.id] = Buffer.alloc(0);
+			buffers[message.room][message.id] = {
+				chunks: {}
+			}
+		}
 	});
 
 	socket.on('deviceIds', function(message)
@@ -155,17 +170,25 @@ io.on('connection', socket => {
 		}
 		if(!buffers[message.room][socket.id])
 		{
-			buffers[message.room][socket.id] = [];
+			//buffers[message.room][socket.id] = Buffer.alloc(0);
+			buffers[message.room][message.id] = {
+				chunks: {}
+			}
 		}
 		//console.log("Audio data received, samples: "+samples+" ,position: "+position);
 		const bufferData = Buffer.from(message.audioData);
-		//const bufferData = new Float32Array(message.audioData);
+		const idBuffer = buffers[message.room][socket.id];
 		fs.appendFile('./public/tmp/'+message.room+'/'+message.timedate+'_'+message.device+'BufferLog',
-			'Audio data position received: '+position+'\r',
+			'Audio data position received: '+position+'\r Buffer size: '+bufferData.length+'\r',
 			function(err){
 				if(err) throw err;
 			});
-		insertDataAtPosition(buffers[message.room][socket.id],bufferData,position);
+		idBuffer.chunks[position] = bufferData;
+		//const bufferData = new Float32Array(message.audioData);
+		
+		/*
+		//insertDataAtPosition(buffers[message.room][socket.id],bufferData,position);
+		*/
 		/*
 		writeFileAtPosition(filename, message.audioData, position, (err) => {
 			if (err) {
@@ -214,6 +237,17 @@ io.on('connection', socket => {
 		//console.log('Received "distanceRecord" with command: '+message.command+' from: '+socket.id);
 		if(message.command == 'Started')
 		{
+			if(!buffers[message.room])
+				{
+					buffers[message.room] = {};
+				}
+				if(!buffers[message.room][message.id])
+				{
+					//buffers[message.room][message.id] = Buffer.alloc(0);
+					buffers[message.room][message.id] = {
+						chunks: {}
+					}
+				}
 			try{
 				io.to(message.master).emit('distanceRecord',{
 					timedate: message.timedate,
@@ -402,7 +436,8 @@ io.on('connection', socket => {
 			// Flush buffers to file for each device in the room
 			i = 1;
 			deviceList.forEach(deviceId => {
-				flushBufferToFile(message.room, deviceId, message.timedate, i, 0, (err) => {
+				//flushBufferToFile(message.room, deviceId, message.timedate, i, 0, (err) => {
+				reconstructBuffer(message.room, deviceId, message.timedate, i, 0, (err) => {	
 				if (err) {
 					console.error(`Error flushing buffer to file for device ${deviceId} in room ${roomId}:`, err);
 				} else {
@@ -473,6 +508,7 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'SyncAudio')
 		{	
+			//console.log('Received SyncAudio Command')
 			// Retrieve list of devices in the room
 			const clientsInRoom = io.sockets.adapter.rooms.get(message.room);
 			//console.log(clientsInRoom);
@@ -483,20 +519,30 @@ io.on('connection', socket => {
 				  //deviceList.push(clientSocket.deviceId);
 				  deviceList.push(clientId);
 				});
+				//console.log(`clientsinroom: ${clientsInRoom}`)
+			}
+			else {
+				//console.log(`Failed: clientsInRoom: ${clientsInRoom}`)
 			}
 			//console.log(deviceList);
 			// Flush buffers to file for each device in the room
 			i = 1;
-			deviceList.forEach(deviceId => {
-				flushBufferToFile(message.room, deviceId, message.timedate, i, 1, (err) => {
-				if (err) {
-					console.error(`Error flushing buffer to file for device ${deviceId} in room ${roomId}:`, err);
-				} else {
-					console.log(`Buffer flushed to file for device ${deviceId} in room ${message.room}`);
-				}
+			//deviceList.forEach(deviceId => {
+				console.log(`Device list: ${deviceList}`)
+			setTimeout(() => {
+				deviceList.slice(1).forEach(deviceId => {
+					//console.log(`Reconstructing buffer for device: ${deviceId}`)
+					//flushBufferToFile(message.room, deviceId, message.timedate, i, 1, (err) => {
+					reconstructBuffer(message.room, deviceId, message.timedate, i, 1, (err) => {
+					if (err) {
+						console.error(`Error flushing buffer to file for device ${deviceId} in room ${roomId}:`, err);
+					} else {
+						//console.log(`Buffer flushed to file for device ${deviceId} in room ${message.room}`);
+					}
+					});
+					i = i + 1;
 				});
-				i = i + 1;
-			});
+			},1000);
 			//Run python script to synchronise audio channels
 			//Run python script to determine synchronisation of audio channels
 			/*
@@ -634,8 +680,8 @@ function insertDataAtPosition(buffer, data, position)
 function flushBufferToFile(roomId, deviceId, datestamp, devnum, clear, callback) 
 {
 	const buffer = buffers[roomId][deviceId];
-	console.log('Buffer size in function: '+buffers[roomId][deviceId].length);
-	const data = Buffer.concat(buffer);
+	//console.log('Buffer size in function: '+buffers[roomId][deviceId].length);
+	//const data = Buffer.concat(buffer);
 	var filePath = null;
 	// Write the buffered data to a file
 	if(clear == 0)
@@ -644,14 +690,70 @@ function flushBufferToFile(roomId, deviceId, datestamp, devnum, clear, callback)
 	} else {
 		filePath = path.join(__dirname, `./public/tmp/${roomId}/${datestamp}_${devnum}.pcm`);
 	}
-	fs.writeFile(filePath, data, (err) => {
+	fs.writeFile(filePath, buffer, (err) => {
 	  	if (err) return callback(err);
+		console.log(`File: ${filePath} wrote data size: ${buffer.length}`)
 	  	if(clear == 1)
 		{
-	  		buffers[roomId][deviceId] = []; // Clear the buffer after writing
+	  		//buffers[roomId][deviceId] = Buffer.alloc(0); // Clear the buffer after writing
+			buffers[roomId][deviceId] = {
+				chunks: {}
+			}
 		}
 	  	callback(null);
 	});
+}
+
+function reconstructBuffer(room,id,datestamp,devnum,clear,callback) {
+    const roomBuffers = buffers[room][id];
+	//console.log(`Reconstruct buffer function for: ${id} with buffer size ${roomBuffers.chunks.length}`)
+    if (!roomBuffers) 
+	{
+		//console.log(`No roombuffers for device: ${id}`)
+		return null;
+	}
+	else
+	{
+		//console.log(`roombuffers: ${roomBuffers}`)
+	}
+    const positions = Object.keys(roomBuffers.chunks).map(Number).sort((a, b) => a - b);
+
+	if (positions.length === 0) {
+		//console.log(`positions.length = 0 for device ${id}`);
+		return null;
+	}
+
+	//console.log(`positions: ${positions}`);
+
+	// Check if the positions are in the correct sequence and fill gaps with zero buffers
+	const filledPositions = [];
+	let expectedPosition = positions[0];
+
+	for (let i = 0; i < positions.length; i++) {
+		const currentPosition = positions[i];
+
+		// Fill gaps with zero buffers
+		while (expectedPosition < currentPosition) {
+			roomBuffers.chunks[expectedPosition] = Buffer.alloc(0); // Allocate an empty buffer
+			filledPositions.push(expectedPosition);
+			expectedPosition += roomBuffers.chunks[expectedPosition].length;
+		}
+
+		filledPositions.push(currentPosition);
+		expectedPosition = currentPosition + roomBuffers.chunks[currentPosition].length;
+	}
+
+	// Reconstruct the buffer using the filled positions
+	const reconstructedBuffer = Buffer.concat(filledPositions.map(pos => roomBuffers.chunks[pos]));
+
+	// Continue with the reconstructed buffer
+
+    //roomBuffers.reconstructedBuffer = reconstructedBuffer;
+	buffers[room][id] = reconstructedBuffer
+	//console.log(`Buffer [${room}][${id}] size: ${buffers[room][id].length}`)
+    roomBuffers.chunks = {};
+	flushBufferToFile(room,id,datestamp,devnum,clear,callback);
+    //return reconstructedBuffer;
 }
 
 server.listen(PORT);

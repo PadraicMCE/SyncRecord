@@ -42,7 +42,9 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 //Request device microphone
@@ -58,7 +60,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     private var isRecording = false
     private var recorder_created = false
     private lateinit var audioRecord: AudioRecord
-    private lateinit var recordingThread: Thread
+    //private lateinit var recordingThread: Thread
+    private var recordingJob: Job? = null
     private var bufferSize: Int = 0
     // Playing audio
     private lateinit var mediaPlayer: MediaPlayer
@@ -115,6 +118,60 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         val buttonOpenMenu: ImageButton = findViewById(R.id.button_open_menu)
 
         socketManager = SocketManager(socketAddress,this)
+
+        /*
+            Recorder object ---------------------------------------
+         */
+        if(!recorder_created){
+            recorder_created = true
+            if(!permissionGranted){
+                ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE)
+                return
+            }
+            // Start recording audio
+            // AudioRecord has more control compared to MediaRecord
+            val sampleRate = 48000
+            val channelConfig = AudioFormat.CHANNEL_IN_MONO
+            val audioFormat = AudioFormat.ENCODING_PCM_16BIT //16bit int for older devices
+            //val audioFormat = AudioFormat.ENCODING_PCM_FLOAT // 32Bit float supported on older devices?
+            bufferSize = AudioRecord.getMinBufferSize(sampleRate,channelConfig,audioFormat) //Optimal buffer size?
+            //val bufferSize = 4590
+            if (ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.RECORD_AUDIO
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // TODO: Consider calling
+                //    ActivityCompat#requestPermissions
+                // here to request the missing permissions, and then overriding
+                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                //                                          int[] grantResults)
+                // to handle the case where the user grants the permission. See the documentation
+                // for ActivityCompat#requestPermissions for more details.
+                return
+            }
+            audioRecord = AudioRecord(
+                MediaRecorder.AudioSource.UNPROCESSED,
+                //MediaRecorder.AudioSource.MIC,
+                sampleRate,
+                channelConfig,
+                audioFormat,
+                bufferSize
+            )
+            //Check if audioRecord is initialized with the correct sampling rate.
+            if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+                // Add error handling.
+                /*
+                runOnUiThread {
+                    debugText.setText("Sampling rate not set")
+                }
+                */
+                return;
+            }
+        }
+        /*
+            -----------------------------------------------------------------
+         */
 
         inputID.setOnEditorActionListener{v, actionId, event ->
             if (actionId == EditorInfo.IME_ACTION_DONE){
@@ -435,89 +492,85 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     // Handle audio recording. A new thread grabs and forwards audio to server
     private fun startRecording(timedate: String, room: String, master: String){
         //TODO: Check if recorder object already created.
-        if(!recorder_created){
-            recorder_created = true
-            if(!permissionGranted){
-                ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE)
-                return
-            }
-            // Start recording audio
-            // AudioRecord has more control compared to MediaRecord
-            val sampleRate = 48000
-            val channelConfig = AudioFormat.CHANNEL_IN_MONO
-            val audioFormat = AudioFormat.ENCODING_PCM_16BIT //16bit int for older devices
-            //val audioFormat = AudioFormat.ENCODING_PCM_FLOAT // 32Bit float supported on older devices?
-            bufferSize = AudioRecord.getMinBufferSize(sampleRate,channelConfig,audioFormat) //Optimal buffer size?
-            //val bufferSize = 4590
-
-            if (ActivityCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.RECORD_AUDIO
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                // TODO: Consider calling
-                //    ActivityCompat#requestPermissions
-                // here to request the missing permissions, and then overriding
-                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                //                                          int[] grantResults)
-                // to handle the case where the user grants the permission. See the documentation
-                // for ActivityCompat#requestPermissions for more details.
-                return
-            }
-            audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.UNPROCESSED,
-                //MediaRecorder.AudioSource.MIC,
-                sampleRate,
-                channelConfig,
-                audioFormat,
-                bufferSize
-            )
-
-            //Check if audioRecord is initialized with the correct sampling rate.
-            if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
-                // Add error handling.
-                /*
-                runOnUiThread {
-                    debugText.setText("Sampling rate not set")
-                }
-                */
-                return;
-            }
-        }
 
         var totalData = 0L
         audioRecord.startRecording()
-        isRecording = true
+        if(audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING)
+        {
+            isRecording = true
+            recordingJob = CoroutineScope(Dispatchers.IO).launch {
+                val buffer = ByteArray(bufferSize)
+                var totalData = 0L
 
-        recordingThread = Thread{
-            //writeAudioDataToFile(bufferSize)
-            val buffer = ByteArray(bufferSize)
+                try {
+                    while (isActive && isRecording) { // Check for coroutine cancellation
+                        val read = audioRecord.read(buffer, 0, buffer.size)
 
-            while (isRecording) {
-                // TODO: Additional error handling here.
-                val read = audioRecord.read(buffer,0,buffer.size)
-                if(read > 0) {
-                    //totalData += buffer.size.toLong()
-                    totalData += read.toLong()
-                    sendAudioData(buffer,timedate,room,totalData)
+                        when {
+                            read > 0 -> {
+                                // Data was read successfully
+                                totalData += read.toLong()
+                                // Send only the portion of the buffer that was filled
+                                sendAudioData(buffer.copyOfRange(0, read), timedate, room, totalData)
+                            }
+                            read == AudioRecord.ERROR_INVALID_OPERATION -> {
+                                Log.e("AudioRecorder", "Error: Invalid operation on AudioRecord")
+                                break // Exit the loop
+                            }
+                            read == AudioRecord.ERROR_BAD_VALUE -> {
+                                Log.e("AudioRecorder", "Error: Bad value passed to AudioRecord.read()")
+                                break // Exit the loop
+                            }
+                            read < 0 -> {
+                                Log.e("AudioRecorder", "Error: Unknown error during AudioRecord.read()")
+                                break
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("AudioRecorder", "Exception during recording: ${e.message}")
+                } finally {
+                    Log.d("AudioRecorder", "Recording loop finished")
+                    // Clean up resources here if needed
                 }
             }
-        }
-        recordingThread.start()
+            /*
+            isRecording = true
+            recordingThread = Thread{
+                //writeAudioDataToFile(bufferSize)
+                val buffer = ByteArray(bufferSize)
 
-        val data = JSONObject()
-        data.put("command","Started")
-        data.put("timedate",timedate)
-        data.put("devinarray",deviceText.text.toString())
-        data.put("room",room)
-        data.put("master",master)
-        data.put("device",socketManager.socket.id().toString())
-        socketManager.sendDistanceRecord(data)
+                while (isRecording) {
+                    // TODO: Additional error handling here.
+                    // Check if read returns full buffer size
+                    val read = audioRecord.read(buffer,0,buffer.size)
+                    if(read > 0) {
+                        //totalData += buffer.size.toLong()
+                        totalData += read.toLong()
+                        sendAudioData(buffer,timedate,room,totalData)
+                    }
+                }
+            }
+            recordingThread.start()
+            */
+            val data = JSONObject()
+            data.put("command","Started")
+            data.put("timedate",timedate)
+            data.put("devinarray",deviceText.text.toString())
+            data.put("room",room)
+            data.put("master",master)
+            data.put("device",socketManager.socket.id().toString())
+            socketManager.sendDistanceRecord(data)
+        }
     }
     private fun stopRecording(timedate: String, room: String, master: String){
         if(isRecording){
             isRecording = false
+            recordingJob?.cancel() // Cancel the coroutine
+            recordingJob = null
             audioRecord.stop()
+            //isRecording = false
+            //audioRecord.stop()
             //audioRecord.release()
         }
         val data = JSONObject()

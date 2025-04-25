@@ -1,6 +1,7 @@
 package com.mcevoy.syncrecordapp
 //TODO: Disable buttons when socket connection with host is lost.
 import android.Manifest
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -26,6 +27,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.view.isVisible
 import java.time.Instant
 import android.media.MediaPlayer
+import android.net.Uri
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore.Audio
@@ -46,6 +49,25 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import android.os.PowerManager
+import android.provider.MediaStore
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.compose.ui.text.intl.Locale
+import androidx.core.content.ContextCompat
+//import androidx.datastore.core.use
+import androidx.lifecycle.get
+import java.text.SimpleDateFormat
+//import androidx.transition.addListener
+import java.util.concurrent.ExecutorService
+import kotlin.text.format
+import android.os.Build
+import android.view.WindowInsetsController
 
 //Request device microphone
 const val REQUEST_CODE = 200
@@ -55,7 +77,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     private lateinit var roomText: TextView
     private lateinit var deviceText: TextView
     // Variables for audio recording
-    private var permissions = arrayOf(Manifest.permission.RECORD_AUDIO)
+    private var permissions = arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.WRITE_EXTERNAL_STORAGE)
     private var permissionGranted = false
     private var isRecording = false
     private var recorder_created = false
@@ -85,6 +107,15 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     private lateinit var downloadFilesRecyclerView: RecyclerView
     private lateinit var downloadFilesAdapter: DownloadFilesAdapter
     private val downloadItems = mutableListOf<DownloadItem>()
+    //
+    private var fileOutputStream: FileOutputStream? = null
+    // WakeLock to keep app active - will increase power consumption
+    private var wakeLock: PowerManager.WakeLock? = null
+    // Camera
+    private lateinit var cameraExecutor: ExecutorService
+    private var imageCapture: ImageCapture? = null
+    private var isCameraEnabled = false //
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -116,6 +147,12 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         val banner: ImageView = findViewById(R.id.imageView)
         banner.isVisible = false
         val buttonOpenMenu: ImageButton = findViewById(R.id.button_open_menu)
+
+        // Fullscreen (Hide notification and status bar)
+        window.insetsController?.apply {
+            hide(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE)
+            systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
 
         socketManager = SocketManager(socketAddress,this)
 
@@ -247,12 +284,29 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             showPopupMenu(it)
         }
 
+        // Acquire WakeLock
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MyApp:ContinuousWakeLock")
+        wakeLock?.acquire()
+        Log.d("MainActivity", "WakeLock acquired")
+
         //Download audio files list
         //setContentView(R.layout.activity_downloads)
         //downloadFilesRecyclerView = findViewById(R.id.downloadFilesRecyclerView)
         //downloadFilesRecyclerView.layoutManager = LinearLayoutManager(this)
         //downloadFilesAdapter = DownloadFilesAdapter(downloadItems)
         //downloadFilesRecyclerView.adapter = downloadFilesAdapter
+        //camera
+
+    }
+    override fun onDestroy() {
+        super.onDestroy()
+        // Release WakeLock
+        wakeLock?.release()
+        wakeLock = null
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        //Log.d("MainActivity", "WakeLock released")
+        cameraExecutor.shutdown()
     }
     override fun onDevNumAssigned(devNum: String) {
         //TODO: For test data gathering, place markers on screnn.
@@ -417,7 +471,10 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 */
             }
         }
-
+        else if(command == "TakePhoto")
+        {
+            takePhoto(timedate)
+        }
     }
     override fun onReceivedJoinedRoom(data: JSONObject) {
         /*
@@ -489,6 +546,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             Toast.makeText(this, "Unprocessed audio source is not supported on this device. Results might be inaccurate", Toast.LENGTH_LONG).show()
         }
     }
+
     // Handle audio recording. A new thread grabs and forwards audio to server
     private fun startRecording(timedate: String, room: String, master: String){
         //TODO: Check if recorder object already created.
@@ -501,6 +559,11 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             recordingJob = CoroutineScope(Dispatchers.IO).launch {
                 val buffer = ByteArray(bufferSize)
                 var totalData = 0L
+                // Get the external storage directory
+                val externalStorageDir = getExternalFilesDir(Environment.DIRECTORY_MUSIC)
+                val file = File(externalStorageDir, "$timedate.pcm")
+                // Open a file output stream to write the PCM data
+                fileOutputStream = FileOutputStream(file)
 
                 try {
                     while (isActive && isRecording) { // Check for coroutine cancellation
@@ -512,6 +575,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                                 totalData += read.toLong()
                                 // Send only the portion of the buffer that was filled
                                 sendAudioData(buffer.copyOfRange(0, read), timedate, room, totalData)
+                                // Open a file output stream to write the PCM data
+                                fileOutputStream?.write(buffer, 0, read)
                             }
                             read == AudioRecord.ERROR_INVALID_OPERATION -> {
                                 Log.e("AudioRecorder", "Error: Invalid operation on AudioRecord")
@@ -572,6 +637,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             //isRecording = false
             //audioRecord.stop()
             //audioRecord.release()
+            // Close the file output stream
+            fileOutputStream?.close()
         }
         val data = JSONObject()
         data.put("command","Stopped")
@@ -712,6 +779,82 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             e.printStackTrace()
             Log.e("AudioPlayback", "Error occurred during playback: ${e.message}")
         }
+    }
+
+    //Camera
+    private fun startCamera() {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        cameraProviderFuture.addListener({
+            // Used to bind the lifecycle of cameras to the lifecycle owner
+            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+            // ImageCapture
+            imageCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                .build()
+            // Select back camera as a default
+            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            try {
+                // Unbind use cases before rebinding
+                cameraProvider.unbindAll()
+                // Bind use cases to camera
+                cameraProvider.bindToLifecycle(
+                    this, cameraSelector, imageCapture
+                )
+            } catch (exc: Exception) {
+                Log.e(TAG, "Use case binding failed", exc)
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+    private fun takePhoto(filename: String) {
+        // Only take a photo if the camera is enabled
+        if (!isCameraEnabled) return
+        // Get a stable reference of the modifiable image capture use case
+        val imageCapture = imageCapture ?: return
+        // Use the provided filename or generate a default one
+        val name = if (filename.isNotBlank()) {
+            filename
+        } else {
+            "Temp"
+        }
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CameraX-Image")
+            }
+        }
+        // Create output options object which contains file + metadata
+        val outputOptions = ImageCapture.OutputFileOptions
+            .Builder(
+                contentResolver,
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                contentValues
+            )
+            .build()
+        // Set up image capture listener, which is triggered after photo has
+        // been taken
+        imageCapture.takePicture(
+            outputOptions,
+            ContextCompat.getMainExecutor(this),
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onError(exc: ImageCaptureException) {
+                    Log.e(TAG, "Photo capture failed: ${exc.message}", exc)
+                }
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    val msg = "Photo capture succeeded: ${output.savedUri}"
+                    Log.d(TAG, msg)
+                }
+            }
+        )
+    }
+    companion object {
+        private const val TAG = "CameraXApp"
+        private const val REQUEST_CODE_PERMISSIONS = 10
+        private val REQUIRED_PERMISSIONS =
+            mutableListOf(
+                Manifest.permission.CAMERA
+            ).toTypedArray()
+        private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
     }
 }
 

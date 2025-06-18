@@ -858,3 +858,4 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     }
 }
 
+

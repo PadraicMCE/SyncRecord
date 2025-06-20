@@ -36,6 +36,7 @@ import android.view.MenuItem
 import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.PopupMenu
+import androidx.appcompat.app.AlertDialog
 //import androidx.privacysandbox.tools.core.generator.build
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -51,6 +52,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     private lateinit var debugText: TextView
     private lateinit var roomText: TextView
     private lateinit var deviceText: TextView
+    private lateinit var roomTextStatic: TextView
+    private lateinit var devNumStatic: TextView
     // Variables for audio recording
     private var permissions = arrayOf(Manifest.permission.RECORD_AUDIO)
     private var permissionGranted = false
@@ -75,6 +78,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     private lateinit var btnCreate: Button
     private lateinit var btnRecord: Button
     private lateinit var btnStop: Button
+    private lateinit var btnCalibrate: Button
     // Download audio files
     private lateinit var downloadFilesRecyclerView: RecyclerView
     private lateinit var downloadFilesAdapter: DownloadFilesAdapter
@@ -100,16 +104,20 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
 
         // Interface
         btnJoin = findViewById(R.id.joinButton)
-        val inputID: EditText = findViewById(R.id.IDInput)
+        //val inputID: EditText = findViewById(R.id.IDInput)
         btnCreate = findViewById(R.id.createButton)
         btnRecord = findViewById(R.id.recordButton)
         btnStop = findViewById(R.id.stopButton)
+        btnCalibrate = findViewById(R.id.calibrateButton)
         debugText = findViewById(R.id.textView)
         roomText = findViewById(R.id.textViewRoom)
         deviceText = findViewById(R.id.textViewDevNum)
+        roomTextStatic = findViewById(R.id.textViewRoomStatic)
+        devNumStatic = findViewById(R.id.textViewDevNumStatic)
 
         socketManager = SocketManager(socketAddress,this)
 
+        /*
         inputID.setOnEditorActionListener{v, actionId, event ->
             if (actionId == EditorInfo.IME_ACTION_DONE){
                 btnJoin.performClick()
@@ -118,12 +126,17 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             else {
                 false
             }
-        }
+        }*/
         btnJoin.setOnClickListener {
+            // Popup window to enter array unique ID.
+            showInputDialog();
+            roomTextStatic.isVisible = true
+            devNumStatic.isVisible = true
             // Check Array ID is valid
             //inputID.setText("Button Clicked")
             // Join array through sockets.
             //println("Button Pressed")
+            /*
             if (inputID.text.toString().trim().isNotEmpty()) {
                 //debugText.setText(inputID.text.toString())
                 roomText.text = inputID.text.toString()
@@ -131,7 +144,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 btnCreate.isEnabled = false
             } else {
                 //Notification to user
-            }
+            }*/
         }
         btnCreate.setOnClickListener {
             // TODO: Create Array sequence
@@ -142,6 +155,9 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             btnJoin.isEnabled = false
             btnRecord.isVisible = true
             btnStop.isVisible = true
+            btnCalibrate.isVisible = true
+            roomTextStatic.isVisible = true
+            devNumStatic.isVisible = true
         }
         btnRecord.setOnClickListener {
             //debugText.setText("Record Button Pressed")
@@ -155,6 +171,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             data.put("numDevices",connectedDevices.size.toString())
             data.put("room",arrayToken)
             data.put("master",socketManager.socket.id().toString())
+            data.put("calibrating",false)
             socketManager.sendDistanceRecord(data)
         }
         btnStop.setOnClickListener {
@@ -164,6 +181,20 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             data.put("room",arrayToken)
             data.put("timedate",ed)
             data.put("master",socketManager.socket.id().toString())
+            socketManager.sendDistanceRecord(data)
+        }
+        btnCalibrate.setOnClickListener {
+            recordingDevices = arrayOfNulls(connectedDevices.size)
+            stoppedDevices = arrayOfNulls(connectedDevices.size)
+            readyDevices = arrayOfNulls(connectedDevices.size)
+            ed = Instant.now().toEpochMilli().toString()
+            val data = JSONObject()
+            data.put("command","Start")
+            data.put("timedate",ed)
+            data.put("numDevices",connectedDevices.size.toString())
+            data.put("room",arrayToken)
+            data.put("master",socketManager.socket.id().toString())
+            data.put("calibrating",true)
             socketManager.sendDistanceRecord(data)
         }
         val buttonOpenMenu: ImageButton = findViewById(R.id.button_open_menu)
@@ -195,6 +226,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         val command = data.getString("command")
         val room = data.getString("room")
         val datamaster = data.getString("master")
+
         if(command == "Start") {
             //Start recording
             /*
@@ -203,7 +235,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             }
             */
             // Start recording audio
-            startRecording(timedate,room,datamaster)
+            val calibrating = data.getBoolean("calibrating")
+            startRecording(timedate,room,datamaster,calibrating)
         }
         else if(command == "Stop") {
             /*
@@ -211,7 +244,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 debugText.text = "Stop Received"
             }
             */
-            stopRecording(timedate,room,datamaster)
+            val calibrating = data.getBoolean("calibrating")
+            stopRecording(timedate,room,datamaster,calibrating)
         }
         else if(command == "Started" && master) {
             /*
@@ -221,17 +255,21 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             */
             val device = data.getString("device")
             val devInArray = data.getString("devinarray")
+            val calibrating = data.getBoolean("calibrating")
             recordingDevices[devInArray.toInt()-1] = 1
             val allRecording = recordingDevices.all { it == 1 }
             if(recordingDevices.size == connectedDevices.size && allRecording) {
-                //Start the PRBS sequences
-                val sendData = JSONObject()
-                sendData.put("timedate",timedate)
-                sendData.put("command","PRBSPlay")
-                sendData.put("device",connectedDevices[0].toString())
-                sendData.put("room",room)
-                sendData.put("master",datamaster)
-                socketManager.sendDistanceRecord(sendData)
+                if(calibrating){
+                    //Start the PRBS sequences
+                    val sendData = JSONObject()
+                    sendData.put("timedate",timedate)
+                    sendData.put("command","PRBSPlay")
+                    sendData.put("device",connectedDevices[0].toString())
+                    sendData.put("room",room)
+                    sendData.put("master",datamaster)
+                    sendData.put("calibrating",true)
+                    socketManager.sendDistanceRecord(sendData)
+                }
             }
         }
         else if(command == "Stopped" && master) {
@@ -242,15 +280,31 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             */
             //val device = data.getString("device")
             val devInArray = data.getString("devinarray")
+            val calibrating = data.getBoolean("calibrating")
+
             stoppedDevices[devInArray.toInt()-1] = 1
             val allStopped = stoppedDevices.all { it == 1 }
             if(stoppedDevices.size == connectedDevices.size && allStopped) {
+                if(calibrating){
+                    val sendData = JSONObject()
+                    sendData.put("timedate",timedate)
+                    sendData.put("command","Sync")
+                    sendData.put("room",room)
+                    sendData.put("master",datamaster)
+                    sendData.put("calibrating",true)
+                    // Send message after 1 second
+                    val handler = Handler(Looper.getMainLooper())
+                    handler.postDelayed({
+                        socketManager.sendDistanceRecord(sendData)
+                    }, 1000)
+                }
                 val sendData = JSONObject()
                 sendData.put("timedate",timedate)
                 sendData.put("command","SyncAudio")
                 sendData.put("devices",connectedDevices.size)
                 sendData.put("room",room)
                 sendData.put("master",datamaster)
+                sendData.put("calibrating",calibrating)
                 socketManager.sendDistanceRecord(sendData)
             }
         }
@@ -270,6 +324,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             playBinaryAudio {
                 // Tell master this device has finished playing the PRBS
                 //val devinarray = data.get("devinarray")
+                val calibrating = data.getBoolean("calibrating")
                 val sendData = JSONObject()
                 sendData.put("timedate",timedate)
                 sendData.put("command","PRBSFinished")
@@ -277,33 +332,35 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 sendData.put("master",datamaster)
                 sendData.put("deviceNo",deviceText.text)
                 sendData.put("devinarray",deviceText.text)
+                sendData.put("calibrating",calibrating)
                 // Send message
                 socketManager.sendDistanceRecord(sendData)
             }
         }
         else if(command == "PRBSFinished" && master) {
             val devInArray = data.getString("devinarray")
+            val calibrating = data.getBoolean("calibrating")
             // If all devices are not finished -> Send play command to next device
             readyDevices[devInArray.toInt()-1] = 1
             val allFinished = readyDevices.all { it == 1 }
-
-
-
             if(readyDevices.size == connectedDevices.size && allFinished) {
                 // All devices finished playing PRBS
+                /*
                 runOnUiThread {
                     Toast.makeText(
                         this,
                         "Received PRBS finished from Device $devInArray All devices ready: $allFinished",
                         Toast.LENGTH_LONG
                     ).show()
-                }
+                }*/
                 // Run Python script to determine time lags
                 val sendData = JSONObject()
                 sendData.put("timedate",timedate)
-                sendData.put("command","Sync")
+                //sendData.put("command","Sync")
+                sendData.put("command","Stop")
                 sendData.put("room",room)
                 sendData.put("master",datamaster)
+                sendData.put("calibrating",calibrating)
                 // Send message after 1 second
                 val handler = Handler(Looper.getMainLooper())
                 handler.postDelayed({
@@ -318,6 +375,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 sendData.put("device",connectedDevices[devInArray.toInt()])
                 sendData.put("room",room)
                 sendData.put("master",datamaster)
+                sendData.put("calibrating",calibrating)
                 // Send message
                 val handler = Handler(Looper.getMainLooper())
                 handler.postDelayed({
@@ -408,7 +466,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         }
     }
     // Handle audio recording. A new thread grabs and forwards audio to server
-    private fun startRecording(timedate: String, room: String, master: String){
+    private fun startRecording(timedate: String, room: String, master: String, calibrating: Boolean){
         if(!permissionGranted){
             ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE)
             return
@@ -480,9 +538,10 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         data.put("room",room)
         data.put("master",master)
         data.put("device",socketManager.socket.id().toString())
+        data.put("calibrating",calibrating)
         socketManager.sendDistanceRecord(data)
     }
-    private fun stopRecording(timedate: String, room: String, master: String){
+    private fun stopRecording(timedate: String, room: String, master: String, calibrating: Boolean){
         if(isRecording){
             isRecording = false
             audioRecord.stop()
@@ -494,6 +553,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         data.put("devinarray",deviceText.text.toString())
         data.put("room",room)
         data.put("master",master)
+        data.put("calibrating",calibrating)
         socketManager.sendDistanceRecord(data)
     }
     private fun sendAudioData(buffer: ByteArray,timedate: String,room: String, totaldata: Long){
@@ -627,6 +687,37 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             e.printStackTrace()
             Log.e("AudioPlayback", "Error occurred during playback: ${e.message}")
         }
+    }
+    // Function for array token UID input popup window.
+    private fun showInputDialog() {
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Input Required")
+        // Inflate the custom layout
+        val inflater = layoutInflater
+        val dialogView = inflater.inflate(R.layout.array_token_input, null)
+        val editText = dialogView.findViewById<EditText>(R.id.editText_dialog_input)
+        builder.setView(dialogView)
+        // Set up the buttons
+        builder.setPositiveButton("Confirm") { dialog, which ->
+            val enteredText = editText.text.toString().trim()
+            if (enteredText.isNotEmpty()) {
+                arrayToken = enteredText // Save to your global variable
+                Toast.makeText(this, "ID saved: $arrayToken", Toast.LENGTH_SHORT).show()
+                // You can also update a TextView on your main screen to show the saved ID
+                // For example: findViewById<TextView>(R.id.savedIdTextView).text = "Saved ID: $inputID"
+            } else {
+                Toast.makeText(this, "Input cannot be empty!", Toast.LENGTH_SHORT).show()
+                // Optionally, you might want to prevent the dialog from closing if input is empty,
+                // but AlertDialog.Builder makes this a bit tricky. For simple validation, this is fine.
+            }
+        }
+        builder.setNegativeButton("Cancel") { dialog, which ->
+            dialog.cancel() // Just close the dialog
+            Toast.makeText(this, "Input cancelled.", Toast.LENGTH_SHORT).show()
+        }
+        // Create and show the AlertDialog
+        val alertDialog = builder.create()
+        alertDialog.show()
     }
 }
 

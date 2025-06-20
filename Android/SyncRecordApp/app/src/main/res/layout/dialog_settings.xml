@@ -18,8 +18,8 @@
 
     <com.google.android.material.textfield.TextInputEditText
         android:id="@+id/textSocketAddress"
-        android:layout_width="411dp"
-        android:layout_height="127dp"
+        android:layout_width="325dp"
+        android:layout_height="135dp"
         android:hint="https://syncrecord.eu"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

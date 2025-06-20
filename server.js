@@ -221,7 +221,8 @@ io.on('connection', socket => {
 					device: message.device,
 					devinarray: message.devinarray,
 					room: message.room,
-					master: message.master
+					master: message.master,
+					calibrating: message.calibrating
 				});
 			} catch(error){
 				//Add error handling. Send error message to room.
@@ -243,7 +244,8 @@ io.on('connection', socket => {
 				command: message.command,
 				device: message.device,
 				room: message.room,
-				master: message.master
+				master: message.master,
+				calibrating: message.calibrating
 			});
 		}
 		else if(message.command == 'PRBSReady')
@@ -304,7 +306,8 @@ io.on('connection', socket => {
 				timedate: message.timedate,
 				command: message.command,
 				room: message.room,
-				master: message.master
+				master: message.master,
+				calibrating: message.calibrating
 			});
 		}
 		else if(message.command == 'Start')
@@ -313,7 +316,8 @@ io.on('connection', socket => {
 				timedate: message.timedate,
 				command: 'Start',
 				room: message.room,
-				master: message.master
+				master: message.master,
+				calibrating: message.calibrating
 			});
 			fs.mkdir('./public/tmp/'+message.room, {recursive: true}, (err) => {
 				if (err) {
@@ -344,7 +348,8 @@ io.on('connection', socket => {
 				deviceNo: message.deviceNo,
 				localtime: message.localtime,
 				room: message.room,
-				master: message.master
+				master: message.master,
+				calibrating: message.calibrating
 			});
 		}
 		else if(message.command == 'PRBSFinished')
@@ -357,7 +362,8 @@ io.on('connection', socket => {
 				deviceNo: message.deviceNo,
 				localtime: message.localtime,
 				room: message.room,
-				master: message.master
+				master: message.master,
+				calibrating: message.calibrating
 			});
 		}
 		else if(message.command == 'EndPRBS')
@@ -455,7 +461,8 @@ io.on('connection', socket => {
 					timedate: message.timedate,
 					command: 'ReadyForSync',
 					room: message.room,
-					master: message.master
+					master: message.master,
+					calibrating: message.calibrating
 				});
 			});
 			/*

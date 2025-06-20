@@ -7,30 +7,29 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <EditText
-        android:id="@+id/IDInput"
-        android:layout_width="254dp"
-        android:layout_height="84dp"
-        android:layout_marginTop="212dp"
-        android:ems="10"
-        android:hint="Array ID"
-        android:inputType="text"
+    <Button
+        android:id="@+id/calibrateButton"
+        android:layout_width="230dp"
+        android:layout_height="70dp"
+        android:text="Calibrate Array"
+        android:visibility="invisible"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.484"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="@+id/imageView"
+        app:layout_constraintVertical_bias="0.68" />
 
     <Button
         android:id="@+id/joinButton"
         android:layout_width="115dp"
         android:layout_height="70dp"
+        android:layout_marginBottom="328dp"
         android:text="Join Array"
         android:visibility="invisible"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/IDInput"
-        app:layout_constraintVertical_bias="0.027" />
+        app:layout_constraintTop_toBottomOf="@+id/createButton" />
 
     <TextView
         android:id="@+id/textView"
@@ -49,6 +48,7 @@
         android:layout_marginStart="76dp"
         android:layout_marginTop="24dp"
         android:text="Device Number:"
+        android:visibility="invisible"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/textViewRoomStatic" />
 
@@ -58,7 +58,8 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="76dp"
         android:layout_marginTop="124dp"
-        android:text="Room ID:"
+        android:text="Array UID:"
+        android:visibility="invisible"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -84,13 +85,14 @@
         android:id="@+id/createButton"
         android:layout_width="115dp"
         android:layout_height="70dp"
+        android:layout_marginBottom="440dp"
         android:text="Create Array"
         android:visibility="invisible"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/IDInput"
-        app:layout_constraintVertical_bias="0.328" />
+        app:layout_constraintTop_toBottomOf="@+id/imageView"
+        app:layout_constraintVertical_bias="0.894" />
 
     <ImageView
         android:id="@+id/imageView"
@@ -109,7 +111,7 @@
         android:visibility="invisible"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.256"
+        app:layout_constraintHorizontal_bias="0.216"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="@+id/imageView"
         app:layout_constraintVertical_bias="0.812" />
@@ -131,12 +133,15 @@
         android:id="@+id/button_open_menu"
         android:layout_width="77dp"
         android:layout_height="80dp"
+        android:scaleType="fitCenter"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="1.0"
         app:layout_constraintStart_toEndOf="@+id/textViewRoom"
         app:layout_constraintTop_toBottomOf="@+id/imageView"
         app:layout_constraintVertical_bias="0.0"
-        app:srcCompat="@drawable/ic_settings" />
+        app:srcCompat="@drawable/ic_settings"
+        android:contentDescription="Open Menu Button"
+        />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

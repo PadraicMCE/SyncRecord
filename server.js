@@ -426,6 +426,8 @@ io.on('connection', socket => {
 			});*/
 			//Run python script to determine synchronisation of audio channels
 			var arguments = [];
+			// Added in for calibration file.
+			arguments.push(message.room)
 			arguments.push('./public/tmp/'+message.room+'/'+message.timedate);
 			for (let i = 1; i <= message.devinarray; i++)
 			{
@@ -437,7 +439,8 @@ io.on('connection', socket => {
 				args: arguments
 			};
 			// Create a new PythonShell instance
-			let pyshell = new PythonShell('./ReadAudio.py', options);
+			//let pyshell = new PythonShell('./ReadAudio.py', options);
+			let pyshell = new PythonShell('./Detection.py', options);
 
 			// Capture messages from the Python script
 			pyshell.on('message', function (message) {

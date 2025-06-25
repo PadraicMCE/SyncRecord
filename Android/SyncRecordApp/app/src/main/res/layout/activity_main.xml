@@ -23,13 +23,12 @@
         android:id="@+id/joinButton"
         android:layout_width="115dp"
         android:layout_height="70dp"
-        android:layout_marginBottom="328dp"
         android:text="Join Array"
         android:visibility="invisible"
-        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/createButton" />
+        app:layout_constraintHorizontal_bias="0.462"
+        app:layout_constraintStart_toEndOf="@+id/createButton"
+        tools:layout_editor_absoluteY="358dp" />
 
     <TextView
         android:id="@+id/textView"
@@ -45,8 +44,8 @@
         android:id="@+id/textViewDevNumStatic"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="76dp"
-        android:layout_marginTop="24dp"
+        android:layout_marginStart="40dp"
+        android:layout_marginTop="64dp"
         android:text="Device Number:"
         android:visibility="invisible"
         app:layout_constraintStart_toStartOf="parent"
@@ -65,34 +64,37 @@
 
     <TextView
         android:id="@+id/textViewRoom"
-        android:layout_width="123dp"
-        android:layout_height="18dp"
-        android:layout_marginStart="4dp"
-        android:layout_marginTop="124dp"
-        app:layout_constraintStart_toEndOf="@+id/textViewRoomStatic"
-        app:layout_constraintTop_toTopOf="parent" />
+        android:layout_width="134dp"
+        android:layout_height="67dp"
+        android:layout_marginTop="52dp"
+        android:textSize="20sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.501"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/imageView" />
 
     <TextView
         android:id="@+id/textViewDevNum"
-        android:layout_width="81dp"
-        android:layout_height="19dp"
-        android:layout_marginStart="4dp"
-        android:layout_marginTop="24dp"
-        app:layout_constraintStart_toEndOf="@+id/textViewDevNumStatic"
+        android:layout_width="133dp"
+        android:layout_height="117dp"
+        android:layout_marginTop="16dp"
+        android:textSize="24sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/textViewRoom" />
 
     <Button
         android:id="@+id/createButton"
         android:layout_width="115dp"
         android:layout_height="70dp"
-        android:layout_marginBottom="440dp"
         android:text="Create Array"
         android:visibility="invisible"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.216"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/imageView"
-        app:layout_constraintVertical_bias="0.894" />
+        app:layout_constraintVertical_bias="0.488" />
 
     <ImageView
         android:id="@+id/imageView"
@@ -133,6 +135,7 @@
         android:id="@+id/button_open_menu"
         android:layout_width="77dp"
         android:layout_height="80dp"
+        android:contentDescription="Open Menu Button"
         android:scaleType="fitCenter"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -140,8 +143,6 @@
         app:layout_constraintStart_toEndOf="@+id/textViewRoom"
         app:layout_constraintTop_toBottomOf="@+id/imageView"
         app:layout_constraintVertical_bias="0.0"
-        app:srcCompat="@drawable/ic_settings"
-        android:contentDescription="Open Menu Button"
-        />
+        app:srcCompat="@drawable/ic_settings" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

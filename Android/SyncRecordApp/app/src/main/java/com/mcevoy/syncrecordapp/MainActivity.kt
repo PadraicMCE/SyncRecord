@@ -153,6 +153,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             roomText.text = arrayToken
             socketManager.sendJoinRoom(arrayToken)
             btnJoin.isEnabled = false
+            btnCreate.isEnabled = false
             btnRecord.isVisible = true
             btnStop.isVisible = true
             btnCalibrate.isVisible = true
@@ -390,6 +391,16 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     ).show()
                 }
                 */
+            }
+        }
+
+        else if(command == "ReadyForSync" && master) {
+            runOnUiThread{
+                Toast.makeText(
+                    this,
+                    "Microphone array is calibrated.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
 

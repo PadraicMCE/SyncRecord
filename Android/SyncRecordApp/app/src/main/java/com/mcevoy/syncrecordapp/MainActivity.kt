@@ -1,8 +1,11 @@
 package com.mcevoy.syncrecordapp
 //TODO: Disable buttons when socket connection with host is lost.
 import android.Manifest
+import android.content.ContentValues
+import android.content.ContentValues.TAG
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.res.Resources
 import android.media.AudioAttributes
@@ -26,8 +29,11 @@ import androidx.core.app.ActivityCompat
 import androidx.core.view.isVisible
 import java.time.Instant
 import android.media.MediaPlayer
+import android.net.Uri
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.provider.MediaStore.Audio
 import android.util.Log
 import android.view.Menu
@@ -41,12 +47,36 @@ import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+// To allow self-signed certificates used on local servers
+import okhttp3.OkHttpClient
+import java.io.InputStream
+import java.net.URI
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509TrustManager
+import okhttp3.Request
+import okio.buffer
+import okio.sink
+import com.mcevoy.syncrecordapp.DownloadItem
 
-//Request device microphone
-const val REQUEST_CODE = 200
+// Request device microphone
+const val REQUEST_CODE_MIC = 200
+
+// Server types. Can be local or cloud deployment. Each is done differently.
+// TODO: Add instruction comments about different deployments
+
+enum class ServerType {
+    CLOUD, LOCAL
+}
+
 class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogFragment.OnInputListener {
     private lateinit var socketManager: SocketManager
     private lateinit var debugText: TextView
@@ -63,7 +93,6 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     // Playing audio
     private lateinit var mediaPlayer: MediaPlayer
     private lateinit var readyDevices: Array<Int?>
-    //private val readyDevices: MutableList<Int?> = mutableListOf()
     // Variables for master device
     private var master = false
     private lateinit var arrayToken: String
@@ -71,8 +100,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     private lateinit var ed: String
     private lateinit var recordingDevices: Array<Int?>
     private lateinit var stoppedDevices: Array<Int?>
-    private var socketAddress: String = "https://syncrecord.eu:8443"
-    //private var socketAddress: String = "https://192.168.1.1:8443"
+    private var socketAddress: String = "https://syncrecord.eu:3000"
+    //private var socketAddress: String = "192.168.1.6:3000"
     //buttons
     private lateinit var btnJoin: Button
     private lateinit var btnCreate: Button
@@ -80,9 +109,31 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     private lateinit var btnStop: Button
     private lateinit var btnCalibrate: Button
     // Download audio files
-    private lateinit var downloadFilesRecyclerView: RecyclerView
-    private lateinit var downloadFilesAdapter: DownloadFilesAdapter
-    private val downloadItems = mutableListOf<DownloadItem>()
+    //private lateinit var downloadFilesRecyclerView: RecyclerView
+    //private lateinit var downloadFilesAdapter: DownloadFilesAdapter
+    //private val downloadItems = mutableListOf<DownloadItem>()
+
+    // --- NEW: Socket Address Configuration ---
+    private var currentServerType: ServerType = ServerType.CLOUD // Default to Cloud
+    private var currentSocketAddress: String = "https://syncrecord.eu:3000" // Default Cloud address
+
+    private val CLOUD_SERVER_DOMAIN = "https://syncrecord.eu"
+    private val SERVER_PORT = 3000 // Ensure this matches your server's port for both local and cloud
+
+    // Lazy initialization for self-signed certificate and its fingerprint
+    private val selfSignedCert: X509Certificate by lazy {
+        val cf: CertificateFactory = CertificateFactory.getInstance("X.509")
+        val caInput: InputStream = resources.openRawResource(R.raw.cert) // Make sure R.raw.cert points to your .crt file
+        caInput.use { cf.generateCertificate(it) } as X509Certificate
+    }
+    private val selfSignedCertFingerprint: String by lazy { extractCertFingerprint(selfSignedCert) }
+    // --- END NEW ---
+
+    // Shared preferences for persistent options
+    private lateinit var sharedPreferences: SharedPreferences
+
+    // Data class for your download items
+    //data class DownloadItem(val fileName: String, val downloadLink: String)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,16 +146,19 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         }
         // Keep the screen on
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // Get and load stored preferences
+        sharedPreferences = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+
+        loadSettingsFromSharedPreferences()
         //Check if access to unprocessed audio data is available on device
         checkUnprocessedAudioSupport()
         // Get permissions to access the device microphone
         permissionGranted = ActivityCompat.checkSelfPermission(this, permissions[0]) == PackageManager.PERMISSION_GRANTED
         if(!permissionGranted)
-            ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE)
+            ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE_MIC)
 
         // Interface
         btnJoin = findViewById(R.id.joinButton)
-        //val inputID: EditText = findViewById(R.id.IDInput)
         btnCreate = findViewById(R.id.createButton)
         btnRecord = findViewById(R.id.recordButton)
         btnStop = findViewById(R.id.stopButton)
@@ -115,53 +169,36 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         roomTextStatic = findViewById(R.id.textViewRoomStatic)
         devNumStatic = findViewById(R.id.textViewDevNumStatic)
 
-        socketManager = SocketManager(socketAddress,this)
+        // Initialize SocketManager with the default cloud configuration
+        // This will now use the new connectToServer logic internally
+        initSocketManager(currentServerType, currentSocketAddress)
+        //socketManager = SocketManager(socketAddress,this)
 
-        /*
-        inputID.setOnEditorActionListener{v, actionId, event ->
-            if (actionId == EditorInfo.IME_ACTION_DONE){
-                btnJoin.performClick()
-                true
-            }
-            else {
-                false
-            }
-        }*/
         btnJoin.setOnClickListener {
             // Popup window to enter array unique ID.
             showInputDialog();
             roomTextStatic.isVisible = true
             devNumStatic.isVisible = true
-            // Check Array ID is valid
-            //inputID.setText("Button Clicked")
-            // Join array through sockets.
-            //println("Button Pressed")
-            /*
-            if (inputID.text.toString().trim().isNotEmpty()) {
-                //debugText.setText(inputID.text.toString())
-                roomText.text = inputID.text.toString()
-                socketManager.sendJoinRoom(inputID.text.toString().trim())
-                btnCreate.isEnabled = false
-            } else {
-                //Notification to user
-            }*/
         }
         btnCreate.setOnClickListener {
             // TODO: Create Array sequence
             arrayToken = generateRandomCode(4)
             master = true
             roomText.text = arrayToken
-            socketManager.sendJoinRoom(arrayToken)
+            val data = JSONObject()
+            data.put("room",arrayToken)
+            socketManager.sendJoinRoom(data)
             btnJoin.isEnabled = false
             btnCreate.isEnabled = false
             btnRecord.isVisible = true
+            btnRecord.isEnabled = false
             btnStop.isVisible = true
+            btnStop.isEnabled = false
             btnCalibrate.isVisible = true
             roomTextStatic.isVisible = true
             devNumStatic.isVisible = true
         }
         btnRecord.setOnClickListener {
-            //debugText.setText("Record Button Pressed")
             recordingDevices = arrayOfNulls(connectedDevices.size)
             stoppedDevices = arrayOfNulls(connectedDevices.size)
             readyDevices = arrayOfNulls(connectedDevices.size)
@@ -171,20 +208,21 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             data.put("timedate",ed)
             data.put("numDevices",connectedDevices.size.toString())
             data.put("room",arrayToken)
-            data.put("master",socketManager.socket.id().toString())
+            data.put("master",socketManager.getSocket().id().toString())
             data.put("calibrating",false)
             socketManager.sendDistanceRecord(data)
         }
         btnStop.setOnClickListener {
-            //debugText.setText("Stop Button Pressed")
             val data = JSONObject()
             data.put("command","Stop")
             data.put("room",arrayToken)
             data.put("timedate",ed)
-            data.put("master",socketManager.socket.id().toString())
+            data.put("master",socketManager.getSocket().id().toString())
+            data.put("calibrating",false)
             socketManager.sendDistanceRecord(data)
         }
         btnCalibrate.setOnClickListener {
+            btnCalibrate.isEnabled = false
             recordingDevices = arrayOfNulls(connectedDevices.size)
             stoppedDevices = arrayOfNulls(connectedDevices.size)
             readyDevices = arrayOfNulls(connectedDevices.size)
@@ -194,7 +232,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             data.put("timedate",ed)
             data.put("numDevices",connectedDevices.size.toString())
             data.put("room",arrayToken)
-            data.put("master",socketManager.socket.id().toString())
+            data.put("master",socketManager.getSocket().id().toString())
             data.put("calibrating",true)
             socketManager.sendDistanceRecord(data)
         }
@@ -210,6 +248,98 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         //downloadFilesAdapter = DownloadFilesAdapter(downloadItems)
         //downloadFilesRecyclerView.adapter = downloadFilesAdapter
     }
+
+    // --- NEW: initSocketManager function ---
+    // This function encapsulates the logic to create/re-create SocketManager
+    // with the appropriate OkHttpClient based on server type.
+    private fun initSocketManager(serverType: ServerType, address: String?) {
+        val baseUrl: String // Declared within this function's scope
+        val okHttpClientBuilder = OkHttpClient.Builder()
+        val opts = io.socket.client.IO.Options() // Declared within this function's scope
+        opts.forceNew = true
+        opts.reconnection = true
+
+        when (serverType) {
+            ServerType.CLOUD -> {
+                // If user enters a custom domain/IP for cloud, use it. Otherwise, use default.
+                baseUrl = if (address.isNullOrBlank() || address.startsWith("https://")) { // Check for existing protocol
+                    if (address.isNullOrBlank()) CLOUD_SERVER_DOMAIN else address
+                } else { // Assume it's a domain without protocol, add HTTPS and default port
+                    "https://$address:$SERVER_PORT"
+                }
+                // For cloud, use default OkHttpClient. No custom SSL/HostnameVerifier.
+            }
+            ServerType.LOCAL -> {
+                if (address.isNullOrBlank()) {
+                    runOnUiThread { Toast.makeText(this, "Local IP cannot be empty!", Toast.LENGTH_LONG).show() }
+                    Log.e("MainActivity", "Local IP not provided for local server type.")
+                    return // Do not proceed with SocketManager initialization
+                }
+                baseUrl = if (address.startsWith("https://")) address else "https://$address:$SERVER_PORT"
+
+                // For local, configure custom SSL and HostnameVerifier
+                val tmfAlgorithm: String = TrustManagerFactory.getDefaultAlgorithm()
+                val tmf: TrustManagerFactory = TrustManagerFactory.getInstance(tmfAlgorithm).apply {
+                    val keyStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
+                        load(null, null)
+                        setCertificateEntry("ca", selfSignedCert)
+                    }
+                    init(keyStore)
+                }
+
+                val sslContext: SSLContext = SSLContext.getInstance("TLS").apply {
+                    init(null, tmf.trustManagers, null)
+                }
+
+                okHttpClientBuilder
+                    .sslSocketFactory(sslContext.socketFactory, tmf.trustManagers[0] as X509TrustManager)
+                    .hostnameVerifier { hostname, session ->
+                        val peerCert = session.peerCertificates.firstOrNull() as? X509Certificate
+                        if (peerCert == null) {
+                            Log.e("HostnameVerifier", "No peer certificate found for hostname: $hostname")
+                            return@hostnameVerifier false
+                        }
+
+                        val peerCertFingerprint = extractCertFingerprint(peerCert)
+                        val isYourSelfSignedCert = selfSignedCertFingerprint == peerCertFingerprint
+                        Log.d("HostnameVerifier", "Is our self-signed cert ($hostname)? $isYourSelfSignedCert")
+
+                        // This part needs careful consideration for local IPs
+                        // A hostname like "192.168.1.100" won't have a direct match in the cert's CN or SANs.
+                        // The primary check here is that it's *our* self-signed cert AND it's a local IP.
+                        val isLocalNetworkIp = hostname.startsWith("192.168.") || hostname.startsWith("10.") || hostname == "localhost" || hostname == "127.0.0.1"
+                        Log.d("HostnameVerifier", "Is local network IP ($hostname)? $isLocalNetworkIp")
+
+                        isYourSelfSignedCert && isLocalNetworkIp
+                    }
+            }
+        }
+
+        // Build the OkHttpClient instance (conditional setup already applied to builder)
+        val finalOkHttpClient = okHttpClientBuilder.build()
+        opts.callFactory = finalOkHttpClient
+        opts.webSocketFactory = finalOkHttpClient
+
+        val serverUri = try {
+            URI(baseUrl)
+        } catch (e: Exception) {
+            runOnUiThread { Toast.makeText(this, "Invalid socket address format: ${e.message}", Toast.LENGTH_LONG).show() }
+            Log.e("MainActivity", "Invalid URI format: $baseUrl, Error: ${e.message}")
+            connectionErrorMessage("Invalid address format")
+            return
+        }
+
+        Log.d("SocketManager", "Initializing SocketManager with URI: $serverUri")
+
+        // This is the line that *sets* the class-level socketManager.
+        // serverUri and opts are available here because they are declared within initSocketManager.
+        if (::socketManager.isInitialized) {
+            socketManager.disconnect()
+        }
+        socketManager = SocketManager(serverUri.toString(), this, opts)
+        runOnUiThread { debugText.text = "Attempting connection to ${serverUri.host}" }
+    }
+
     override fun onDevNumAssigned(devNum: String) {
         //TODO("Not yet implemented -> Add UI component")
         //debugText.text = devNum.toString()
@@ -229,12 +359,6 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         val datamaster = data.getString("master")
 
         if(command == "Start") {
-            //Start recording
-            /*
-            runOnUiThread {
-                debugText.text = "Start Received"
-            }
-            */
             // Start recording audio
             val calibrating = data.getBoolean("calibrating")
             startRecording(timedate,room,datamaster,calibrating)
@@ -249,17 +373,21 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             stopRecording(timedate,room,datamaster,calibrating)
         }
         else if(command == "Started" && master) {
-            /*
+
             runOnUiThread {
                 debugText.text = "Received Started from device"
             }
-            */
+
             val device = data.getString("device")
             val devInArray = data.getString("devinarray")
             val calibrating = data.getBoolean("calibrating")
+
             recordingDevices[devInArray.toInt()-1] = 1
             val allRecording = recordingDevices.all { it == 1 }
             if(recordingDevices.size == connectedDevices.size && allRecording) {
+                runOnUiThread {
+                    debugText.text = "All recording devices started"
+                }
                 if(calibrating){
                     //Start the PRBS sequences
                     val sendData = JSONObject()
@@ -270,6 +398,10 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     sendData.put("master",datamaster)
                     sendData.put("calibrating",true)
                     socketManager.sendDistanceRecord(sendData)
+                }
+                else{
+                    // Do something?
+
                 }
             }
         }
@@ -291,6 +423,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     sendData.put("timedate",timedate)
                     sendData.put("command","Sync")
                     sendData.put("room",room)
+                    sendData.put("devices", connectedDevices.size)
                     sendData.put("master",datamaster)
                     sendData.put("calibrating",true)
                     // Send message after 1 second
@@ -299,14 +432,16 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                         socketManager.sendDistanceRecord(sendData)
                     }, 1000)
                 }
-                val sendData = JSONObject()
-                sendData.put("timedate",timedate)
-                sendData.put("command","SyncAudio")
-                sendData.put("devices",connectedDevices.size)
-                sendData.put("room",room)
-                sendData.put("master",datamaster)
-                sendData.put("calibrating",calibrating)
-                socketManager.sendDistanceRecord(sendData)
+                if(!calibrating) {
+                    val sendData = JSONObject()
+                    sendData.put("timedate", timedate)
+                    sendData.put("command", "SyncAudio")
+                    sendData.put("devices", connectedDevices.size)
+                    sendData.put("room", room)
+                    sendData.put("master", datamaster)
+                    sendData.put("calibrating", false)
+                    socketManager.sendDistanceRecord(sendData)
+                }
             }
         }
         else if(command == "PRBSPlay") {
@@ -346,14 +481,13 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             val allFinished = readyDevices.all { it == 1 }
             if(readyDevices.size == connectedDevices.size && allFinished) {
                 // All devices finished playing PRBS
-                /*
                 runOnUiThread {
                     Toast.makeText(
                         this,
                         "Received PRBS finished from Device $devInArray All devices ready: $allFinished",
                         Toast.LENGTH_LONG
                     ).show()
-                }*/
+                }
                 // Run Python script to determine time lags
                 val sendData = JSONObject()
                 sendData.put("timedate",timedate)
@@ -401,6 +535,9 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     "Microphone array is calibrated.",
                     Toast.LENGTH_LONG
                 ).show()
+                btnRecord.isEnabled = true
+                btnStop.isEnabled = true
+                btnCalibrate.isEnabled = true
             }
         }
 
@@ -434,18 +571,17 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     private fun showPopupMenu(view: android.view.View) {
         val popup = PopupMenu(this, view)
         val inflater: MenuInflater = popup.menuInflater
-        inflater.inflate(R.menu.options_menu, popup.menu)
+        inflater.inflate(R.menu.options_menu, popup.menu) // Assuming R.menu.options_menu is correct
         popup.setOnMenuItemClickListener { item: MenuItem ->
             when (item.itemId) {
-                R.id.action_socket_address -> {
-                    // Handle settings click
-                    val dialog = SettingsDialogFragment()
+                R.id.action_socket_address -> { // Assuming this is your menu item ID
+                    val dialog = SettingsDialogFragment.newInstance(currentSocketAddress, currentServerType)
                     dialog.show(supportFragmentManager, "SettingsDialog")
                     true
                 }
-                R.id.action_view_downloads -> {
-                    // Open the DownloadsActivity when the menu item is clicked
+                R.id.action_view_downloads -> { // Assuming this is your menu item ID
                     val intent = Intent(this, DownloadsActivity::class.java)
+                    // No need to pass via Intent if DownloadsActivity will read from SharedPreferences
                     startActivity(intent)
                     true
                 }
@@ -463,7 +599,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         grantResults: IntArray
     ){
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if(requestCode == REQUEST_CODE)
+        if(requestCode == REQUEST_CODE_MIC)
             permissionGranted = grantResults[0] == PackageManager.PERMISSION_GRANTED
     }
     private fun checkUnprocessedAudioSupport(){
@@ -477,9 +613,9 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         }
     }
     // Handle audio recording. A new thread grabs and forwards audio to server
-    private fun startRecording(timedate: String, room: String, master: String, calibrating: Boolean){
+    private fun startRecording(timedate: String, room: String, datamaster: String, calibrating: Boolean){
         if(!permissionGranted){
-            ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE)
+            ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE_MIC)
             return
         }
         // Start recording audio
@@ -504,6 +640,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             // for ActivityCompat#requestPermissions for more details.
             return
         }
+
         audioRecord = AudioRecord(
             MediaRecorder.AudioSource.UNPROCESSED,
             //MediaRecorder.AudioSource.MIC,
@@ -523,6 +660,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             */
             return;
         }
+
         var totalData = 0L
         audioRecord.startRecording()
         isRecording = true
@@ -540,30 +678,42 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 }
             }
         }
+
         recordingThread.start()
+
+        if(master) {
+            if(btnCalibrate.isEnabled) {
+                runOnUiThread {
+                    btnCalibrate.isEnabled = false
+                }
+            }
+        }
 
         val data = JSONObject()
         data.put("command","Started")
         data.put("timedate",timedate)
         data.put("devinarray",deviceText.text.toString())
         data.put("room",room)
-        data.put("master",master)
-        data.put("device",socketManager.socket.id().toString())
+        data.put("master",datamaster)
+        data.put("device",socketManager.getSocket().id().toString())
         data.put("calibrating",calibrating)
         socketManager.sendDistanceRecord(data)
     }
-    private fun stopRecording(timedate: String, room: String, master: String, calibrating: Boolean){
+    private fun stopRecording(timedate: String, room: String, datamaster: String, calibrating: Boolean){
         if(isRecording){
             isRecording = false
             audioRecord.stop()
             audioRecord.release()
         }
+        /*
+        btnCalibrate.isEnabled = true
+        */
         val data = JSONObject()
         data.put("command","Stopped")
         data.put("timedate",timedate)
         data.put("devinarray",deviceText.text.toString())
         data.put("room",room)
-        data.put("master",master)
+        data.put("master",datamaster)
         data.put("calibrating",calibrating)
         socketManager.sendDistanceRecord(data)
     }
@@ -600,26 +750,36 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     }
 
     //TODO: Fix the socket address error text showing after correct connection
-    override fun sendInput(input: String) {
-        // Set the received input to a variable
-        socketAddress = input
-        socketManager = SocketManager(socketAddress,this)
-        //Toast.makeText(this, input, Toast.LENGTH_LONG).show()
-        //Log.d("MainActivity", "Received input from dialog: $receivedInput")
+    // This method is called when the OK button in SettingsDialogFragment is pressed.
+    override fun sendInput(inputAddress: String, serverType: ServerType) {
+        // This method is called when the OK button in SettingsDialogFragment is pressed
+        currentSocketAddress = inputAddress
+        currentServerType = serverType
+
+        // Save the updated settings to SharedPreferences
+        saveSettingsToSharedPreferences(inputAddress, serverType)
+
+        // Optional: Show a toast or update UI to confirm settings applied
+        Toast.makeText(this, "Socket Address: $inputAddress, Server Type: $serverType saved.", Toast.LENGTH_SHORT).show()
+
+        // If your SocketManager needs to reconnect with the new address, do it here
+        // For example:
+        socketManager.disconnect()
+        initSocketManager(currentServerType,currentSocketAddress)
     }
 
     // Downloading audio files from server
-    private fun addNewDownloadLink(fileName: String, downloadLink: String) {
-        val newItem = DownloadItem(fileName, downloadLink)
-        downloadFilesAdapter.addDownloadItem(newItem)
-    }
+    //private fun addNewDownloadLink(fileName: String, downloadLink: String) {
+        //val newItem = DownloadItem(fileName, downloadLink)
+        //downloadFilesAdapter.addDownloadItem(newItem)
+    //}
 
     // Socket.IO code to handle receiving new download links
-    private fun onDownloadLinkReceived(fileName: String, downloadLink: String) {
-        runOnUiThread {
-            addNewDownloadLink(fileName, downloadLink)
-        }
-    }
+    //private fun onDownloadLinkReceived(fileName: String, downloadLink: String) {
+        //runOnUiThread {
+            //addNewDownloadLink(fileName, downloadLink)
+        //}
+    //}
 
     private fun playBinaryAudio(onCompletion: () -> Unit) {
         val sampleRate = 48000;
@@ -714,6 +874,12 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             if (enteredText.isNotEmpty()) {
                 arrayToken = enteredText // Save to your global variable
                 Toast.makeText(this, "ID saved: $arrayToken", Toast.LENGTH_SHORT).show()
+                val data = JSONObject()
+                data.put("room",arrayToken)
+                socketManager.sendJoinRoom(data)
+                runOnUiThread {
+                    roomText.text = arrayToken.toString()
+                }
                 // You can also update a TextView on your main screen to show the saved ID
                 // For example: findViewById<TextView>(R.id.savedIdTextView).text = "Saved ID: $inputID"
             } else {
@@ -729,6 +895,127 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         // Create and show the AlertDialog
         val alertDialog = builder.create()
         alertDialog.show()
+    }
+
+    // Helper to extract SHA-256 fingerprint (unchanged)
+    private fun extractCertFingerprint(cert: X509Certificate): String {
+        return try {
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            val publicKeyBytes = cert.encoded
+            val digest = md.digest(publicKeyBytes)
+            digest.joinToString(":") { "%02x".format(it) }
+        } catch (e: Exception) {
+            Log.e("CertFingerprint", "Error getting fingerprint: ${e.message}")
+            ""
+        }
+    }
+
+    // Function for downloading audio files from server
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun startDownload(link: String) {
+        //val serverIp = "YOUR_SERVER_IP" // **IMPORTANT: Replace with your Node.js server's IP**
+        //val serverPort = 3000 // Match your Node.js server port
+
+        //val identifier = "test_user" // Or get this dynamically (e.g., user ID)
+        val downloadUrl = "http://$socketAddress/tmp/$link"
+        val fileName = "${link}.zip"
+
+        Toast.makeText(this, "Starting download...", Toast.LENGTH_SHORT).show()
+
+        // Use a Coroutine for network operations to avoid blocking the main thread
+        GlobalScope.launch(Dispatchers.IO) { // Run on a background thread
+            val client = OkHttpClient()
+            val request = Request.Builder().url(downloadUrl).build()
+
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        launch(Dispatchers.Main) {
+                            Toast.makeText(this@MainActivity, "Download failed: ${response.code}", Toast.LENGTH_LONG).show()
+                        }
+                        Log.e(TAG, "Download failed: ${response.code} - ${response.message}")
+                        return@launch
+                    }
+
+                    // --- Save file using MediaStore (Recommended for Android 10+) ---
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, "application/zip")
+                        // Use RELATIVE_PATH to put it directly in the Downloads folder
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    }
+
+                    var uri: Uri? = null
+                    try {
+                        contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)?.let { insertedUri ->
+                            uri = insertedUri
+                            contentResolver.openOutputStream(insertedUri)?.use { outputStream ->
+                                response.body?.source()?.readAll(outputStream.sink())
+                            }
+                            launch(Dispatchers.Main) {
+                                Toast.makeText(this@MainActivity, "Download complete: $fileName", Toast.LENGTH_LONG).show()
+                            }
+                            Log.d(TAG, "File downloaded to: $insertedUri")
+                        } ?: run {
+                            throw Exception("Failed to create new MediaStore entry for $fileName")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error saving file via MediaStore: ${e.message}", e)
+                        // If an error occurred, try to delete the partially created entry
+                        uri?.let { contentResolver.delete(it, null, null) }
+                        launch(Dispatchers.Main) {
+                            Toast.makeText(this@MainActivity, "Error saving file: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+
+                    // --- OR: Save to app-specific external storage (alternative for app-private files) ---
+                    // This is for files your app primarily uses and doesn't need to be user-discoverable in Downloads
+                    /*
+                    val appSpecificDownloadsDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                    val appSpecificFile = File(appSpecificDownloadsDir, fileName)
+                    appSpecificFile.outputStream().use { output ->
+                        response.body?.source()?.readAll(output.sink())
+                    }
+                    launch(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Download complete (App-specific): $fileName", Toast.LENGTH_LONG).show()
+                    }
+                    Log.d(TAG, "File downloaded to app-specific: ${appSpecificFile.absolutePath}")
+                    */
+                }
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Network error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+                Log.e(TAG, "Network error:", e)
+            }
+        }
+    }
+
+    // Loading persistent option settings
+    private fun loadSettingsFromSharedPreferences() {
+        // Default values if not found in preferences
+        val defaultAddress = "https://syncrecord.eu:3000" // Or your production default
+        val defaultServerType = ServerType.CLOUD
+        currentSocketAddress = sharedPreferences.getString("socket_address", defaultAddress) ?: defaultAddress
+        val serverTypeString = sharedPreferences.getString("server_type", defaultServerType.name)
+        currentServerType = ServerType.valueOf(serverTypeString ?: defaultServerType.name)
+        runOnUiThread { Toast.makeText(this, "Loaded settings: Address=$currentSocketAddress, Type=$currentServerType", Toast.LENGTH_LONG).show() }
+        Log.d("MainActivity", "Loaded settings: Address=$currentSocketAddress, Type=$currentServerType")
+    }
+
+    // Saving persistent option settings
+    private fun saveSettingsToSharedPreferences(address: String, serverType: ServerType) {
+        with (sharedPreferences.edit()) {
+            putString("socket_address", address)
+            putString("server_type", serverType.name) // Save enum as its name string
+            apply() // Apply changes asynchronously
+        }
+        Log.d("MainActivity", "Saved settings: Address=$address, Type=$serverType")
+    }
+
+    override fun onDownloadReady(data: JSONObject) {
+        // Add download link to list
+
     }
 }
 

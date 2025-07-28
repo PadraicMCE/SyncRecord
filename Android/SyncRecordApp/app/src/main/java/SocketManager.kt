@@ -8,91 +8,112 @@ import java.net.URISyntaxException
 import java.net.URI
 import io.socket.engineio.client.EngineIOException
 import android.util.Log
+import com.mcevoy.syncrecordapp.DownloadItem
 
+class SocketManager (private val serverurl: String, private val valCallback: SocketManagerCallback, private val opts: IO.Options) { // Changed callback parameter name to avoid conflict
+    private lateinit var internalSocket: Socket // Renamed to avoid potential conflict with the Socket.kt class name if present
+    private val callback: SocketManagerCallback = valCallback // Explicitly make it a class property
 
-import com.mcevoy.syncrecordapp.SocketManagerCallback
-class SocketManager (serverurl: String, private val callback: SocketManagerCallback) {
-    lateinit var socket: Socket
-    init{
-
+    init {
         try {
             val uri = URI.create(serverurl)
-            val opts = IO.Options()
-            opts.secure = true //https
-            opts.reconnection = true
-            socket = IO.socket(uri,opts)
+            // Use the opts passed from MainActivity, which contains the configured OkHttpClient
+            internalSocket = IO.socket(uri, opts) // Initialise the internalSocket
             initialiseSocketListeners()
-            socket.connect()
+            internalSocket.connect() // Call connect on the initialised socket
             callback.connectionErrorMessage("")
-            //println("Connected to socket")
+            Log.d("SocketManager", "Socket initialized and connecting to: $serverurl")
         } catch (e: URISyntaxException) {
-            // Error handle
-            println("Error connecting to socket")
+            Log.e("SocketManager", "Error parsing URI: $serverurl. Error: ${e.message}")
             callback.connectionErrorMessage("Error connecting to socket host. Check the socket host address in settings.")
+        } catch (e: Exception) {
+            Log.e("SocketManager", "Unexpected error initializing socket: ${e.message}", e)
+            callback.connectionErrorMessage("An unexpected error occurred during connection setup.")
         }
     }
+
+    // Public getter for the socket object, if needed by MainActivity (e.g., socket.id())
+    fun getSocket(): Socket {
+        return internalSocket
+    }
+
     private fun initialiseSocketListeners(){
-        socket.on(Socket.EVENT_CONNECT, Emitter.Listener {
-            // Connection function?
-            println("Connected to server")
-            // MainActivity buttons become active
+        internalSocket.on(Socket.EVENT_CONNECT, Emitter.Listener {
+            Log.d("SocketManager", "Connected to server: ${internalSocket.id()}")
             callback.setButtonsActive()
             callback.connectionErrorMessage("")
         })
-        socket.on(Socket.EVENT_CONNECT_ERROR) { args ->
-            val error = args[0] as EngineIOException
-            Log.e("SocketManager", "Socket connection error: ${error.message}")
-            callback.connectionErrorMessage("Error connecting to socket host. Check the socket host address in settings.")
+        internalSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
+            val error = if (args[0] is EngineIOException) args[0] as EngineIOException else null
+            val errorMessage = error?.message ?: "Unknown connection error"
+            Log.e("SocketManager", "Socket connection error: $errorMessage", error)
+            callback.connectionErrorMessage("Error connecting to socket host: $errorMessage. Check the socket host address in settings.")
         }
-        socket.on("assignDevice", Emitter.Listener { args ->
+        internalSocket.on(Socket.EVENT_DISCONNECT) { args ->
+            val reason = args[0] as String
+            Log.d("SocketManager", "Socket disconnected. Reason: $reason")
+            callback.connectionErrorMessage("Disconnected from server: $reason")
+            callback.setButtonsActive()
+        }
+        internalSocket.on("assignDevice", Emitter.Listener { args ->
             val devicenum = args[0] as String
             val socketid = args[1] as String
             val roomToken = args[2] as String
-            // Indicate device number on UI
+            Log.d("SocketManager", "Assign device received: DevNum=$devicenum, SocketID=$socketid, Room=$roomToken")
         })
-
-        /*
-        socket.on("joinedRoom", Emitter.Listener { args ->
-            var socketid = args[0] as String
-            //Emit assignDevice
-            //callback.received
-            val data = JSONObject()
-            data.put("device")
-            socket.emit("assignDevice",)
-        })*/
-
-        socket.on("DevNumAssigned",Emitter.Listener { args ->
+        internalSocket.on("DevNumAssigned",Emitter.Listener { args ->
             val devInArray = args[0]
-            //Handle the device in array
+            Log.d("SocketManager", "Device number assigned: $devInArray")
             callback.onDevNumAssigned(devInArray.toString())
         })
-        socket.on("Number of Devices",Emitter.Listener { args ->
+        internalSocket.on("Number of Devices",Emitter.Listener { args ->
             val data = args[0] as JSONObject
             val number = data.getString("device")
+            Log.d("SocketManager", "Number of devices: $number")
             callback.onNumberOfDevices(number.toString())
         })
-        socket.on("distanceRecord",Emitter.Listener { args ->
+        internalSocket.on("distanceRecord",Emitter.Listener { args ->
             val data = args[0] as JSONObject
+            Log.d("SocketManager", "Distance record received: $data")
             callback.onReceivedDistanceRecord(data)
         })
-        socket.on("joinedRoom",Emitter.Listener { args ->
+        internalSocket.on("joinedRoom",Emitter.Listener { args ->
             val data = args[0] as JSONObject
+            Log.d("SocketManager", "Joined room confirmation: $data")
             callback.onReceivedJoinedRoom(data)
         })
+        internalSocket.on("DownloadReady",Emitter.Listener { args ->
+            val data = args[0] as JSONObject
+            //val link = data.getString("downloadLink")
+            Log.d("SocketManager", "Download ready: $data")
+            callback.onDownloadReady(data)
+        })
+
     }
-    fun sendJoinRoom(roomToken: String) {
-        socket.emit("joinRoom",roomToken)
+    fun sendJoinRoom(data: JSONObject) {
+        internalSocket.emit("joinRoom",data)
+        Log.d("SocketManager", "Sent joinRoom: $data")
     }
     fun sendAudio(data: JSONObject){
-        socket.emit("audioData",data)
+        internalSocket.emit("audioData",data)
     }
     fun sendDistanceRecord(data: JSONObject){
-        socket.emit("distanceRecord",data)
+        internalSocket.emit("distanceRecord",data)
+        Log.d("SocketManager", "Sent distanceRecord: $data")
     }
     fun sendAssignDevice(data: JSONObject) {
-        socket.emit("assignDevice",data)
+        internalSocket.emit("assignDevice",data)
+        Log.d("SocketManager", "Sent assignDevice: $data")
     }
     fun sendDeviceIds(data: JSONObject) {
-        socket.emit("deviceIds",data)
+        internalSocket.emit("deviceIds",data)
+        Log.d("SocketManager", "Sent deviceIds: $data")
+    }
+    fun disconnect() {
+        if (::internalSocket.isInitialized && internalSocket.connected()) {
+            internalSocket.disconnect()
+            internalSocket.off()
+            Log.d("SocketManager", "Socket disconnected and listeners removed.")
+        }
     }
 }

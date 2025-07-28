@@ -24,8 +24,6 @@
             </intent-filter>
         </activity>
         <activity android:name=".DownloadsActivity" />
-        <activity android:name="com.mcevoy.syncrecordapp.DownloadsActivity" />
-
     </application>
 
 </manifest>

@@ -17,10 +17,11 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import io.socket.client.IO
-import io.socket.client.Socket
+//import io.socket.client.IO
+//import io.socket.client.Socket
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+//import kotlinx.coroutines.GlobalScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -29,34 +30,15 @@ import okio.sink
 import org.json.JSONException
 import org.json.JSONObject // Import for parsing JSON from Socket.IO
 
-// Data class for your download items (make sure this is in a common file or here)
-//data class DownloadItem(val fileName: String, val downloadLink: String)
 
 class DownloadsActivity : AppCompatActivity() {
     private val STORAGE_PERMISSION_CODE = 101
     private val TAG = "DownloadsActivity"
     private lateinit var downloadFilesAdapter: DownloadFilesAdapter
-    private lateinit var socket: Socket
-
-    // This variable will now get its value from SharedPreferences
-    private var socketAddress: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_downloads)
-
-        // --- NEW: Load socketAddress from SharedPreferences ---
-        val sharedPref = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-        val defaultAddress = "https://syncrecord.eu:3000" // Should match default in MainActivity
-        socketAddress = sharedPref.getString("socket_address", defaultAddress) ?: defaultAddress
-
-        if (socketAddress.isBlank()) {
-            Toast.makeText(this, "Server address not configured. Please set in options menu.", Toast.LENGTH_LONG).show()
-            Log.e(TAG, "Socket address is empty or not configured.")
-            // Consider disabling Socket.IO or closing this activity if no address is set
-            // finish() // Uncomment if you want to close if no address
-            // return // Prevent further initialization if finishing
-        }
 
         // Initialise RecyclerView
         val recyclerView: RecyclerView = findViewById(R.id.downloadFilesRecyclerView)
@@ -68,57 +50,33 @@ class DownloadsActivity : AppCompatActivity() {
         }
         recyclerView.adapter = downloadFilesAdapter
 
-        // Initialize Socket.IO connection using the loaded address
-        setupSocketIO()
-    }
-
-    private fun setupSocketIO() {
-        try {
-            // Use the determined socketAddress loaded from SharedPreferences
-            socket = IO.socket(socketAddress)
-            socket.connect()
-
-            // ... (rest of Socket.IO setup for DownloadsActivity, e.g., on "new_download_ready") ...
-            socket.on("new_download_ready") { args ->
-                if (args.isNotEmpty() && args[0] is JSONObject) { // Expecting a JSONObject
-                    val data = args[0] as JSONObject
-                    try {
-                        val fileName = data.getString("fileName")
-                        val downloadLink = data.getString("downloadLink")
-                        onDownloadLinkReceived(fileName, downloadLink)
-                    } catch (e: JSONException) {
-                        Log.e(TAG, "JSON parsing error for download link: ${e.message}", e)
-                    }
-                } else {
-                    Log.e(TAG, "Received Socket.IO message with unexpected format: ${args.joinToString()}")
-                }
+        // IMPORTANT: Now, listen to the SharedFlow from SocketManager.Companion
+        // This is the correct way for DownloadsActivity to receive new download links
+        lifecycleScope.launch { // Use lifecycleScope for proper coroutine management
+            SocketManager.newDownloadLinks.collect { downloadItem ->
+                // Add logging to confirm collection
+                Log.d(TAG, "DownloadsActivity collected new download item: ${downloadItem.fileName}")
+                onDownloadLinkReceived(downloadItem.fileName, downloadItem.downloadLink)
             }
-            socket.on(Socket.EVENT_CONNECT) { Log.d(TAG, "Socket.IO Connected!") }
-            socket.on(Socket.EVENT_DISCONNECT) { Log.d(TAG, "Socket.IO Disconnected!") }
-            socket.on(Socket.EVENT_CONNECT_ERROR) { args ->
-                Log.e(TAG, "Socket.IO Connect Error: ${args.joinToString()}")
-                runOnUiThread {
-                    Toast.makeText(this, "Socket.IO connection error to $socketAddress.", Toast.LENGTH_LONG).show()
-                }
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting up Socket.IO for $socketAddress: ${e.message}", e)
-            runOnUiThread {
-                Toast.makeText(this, "Failed to initialize server connection.", Toast.LENGTH_LONG).show()
-            }
+        }
+        // Optional: Show current connection status from the shared socket managed by SocketManager.Companion
+        if (SocketManager.isSharedSocketConnected()) {
+            Toast.makeText(this, "Connected to server: ${SocketManager.getSharedSocketId()}", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Socket not connected. Check settings in Main Menu.", Toast.LENGTH_LONG).show()
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        socket.disconnect()
-        socket.off("new_download_ready")
     }
 
     private fun addNewDownloadLink(fileName: String, downloadLink: String) {
         val newItem = DownloadItem(fileName, downloadLink)
-        downloadFilesAdapter.addDownloadItem(newItem)
+        runOnUiThread {
+            downloadFilesAdapter.addDownloadItem(newItem)
+            Log.d(TAG, "Added '$fileName' to download list.") // Add log
+        }
     }
 
     private fun onDownloadLinkReceived(fileName: String, downloadLink: String) {
@@ -173,7 +131,7 @@ class DownloadsActivity : AppCompatActivity() {
         Toast.makeText(this, "Initiating download for '$fileName'...", Toast.LENGTH_SHORT).show()
         Log.d(TAG, "Attempting to download from: $downloadLink")
 
-        GlobalScope.launch(Dispatchers.IO) { // Perform network operations on a background thread
+        lifecycleScope.launch(Dispatchers.IO) { // Perform network operations on a background thread
             val client = OkHttpClient()
             val request = Request.Builder().url(downloadLink).build()
 

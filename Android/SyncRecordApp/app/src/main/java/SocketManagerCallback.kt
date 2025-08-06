@@ -9,6 +9,6 @@ interface SocketManagerCallback {
     fun onReceivedJoinedRoom(data: JSONObject)
     fun setButtonsActive()
     fun connectionErrorMessage(message: String)
-    fun onDownloadReady(data: JSONObject)
+    fun onDownloadReady(data: DownloadItem)
     // REMOVE THIS LINE: fun sendInput(input: String)
 }

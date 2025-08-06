@@ -208,7 +208,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             data.put("timedate",ed)
             data.put("numDevices",connectedDevices.size.toString())
             data.put("room",arrayToken)
-            data.put("master",socketManager.getSocket().id().toString())
+            data.put("master",socketManager.getSocketId().toString())
             data.put("calibrating",false)
             socketManager.sendDistanceRecord(data)
         }
@@ -217,7 +217,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             data.put("command","Stop")
             data.put("room",arrayToken)
             data.put("timedate",ed)
-            data.put("master",socketManager.getSocket().id().toString())
+            data.put("master",socketManager.getSocketId().toString())
             data.put("calibrating",false)
             socketManager.sendDistanceRecord(data)
         }
@@ -232,7 +232,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             data.put("timedate",ed)
             data.put("numDevices",connectedDevices.size.toString())
             data.put("room",arrayToken)
-            data.put("master",socketManager.getSocket().id().toString())
+            data.put("master",socketManager.getSocketId().toString())
             data.put("calibrating",true)
             socketManager.sendDistanceRecord(data)
         }
@@ -336,7 +336,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         if (::socketManager.isInitialized) {
             socketManager.disconnect()
         }
-        socketManager = SocketManager(serverUri.toString(), this, opts)
+        socketManager = SocketManager(this.applicationContext, this)
         runOnUiThread { debugText.text = "Attempting connection to ${serverUri.host}" }
     }
 
@@ -695,7 +695,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         data.put("devinarray",deviceText.text.toString())
         data.put("room",room)
         data.put("master",datamaster)
-        data.put("device",socketManager.getSocket().id().toString())
+        data.put("device",socketManager.getSocketId().toString())
         data.put("calibrating",calibrating)
         socketManager.sendDistanceRecord(data)
     }
@@ -1013,9 +1013,12 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         Log.d("MainActivity", "Saved settings: Address=$address, Type=$serverType")
     }
 
-    override fun onDownloadReady(data: JSONObject) {
+    override fun onDownloadReady(data: DownloadItem) {
         // Add download link to list
-
+        runOnUiThread {
+            Toast.makeText(this, "New Download Ready.", Toast.LENGTH_LONG).show()
+            debugText.text = "Download Received: ${data.fileName} Link: ${data.downloadLink}"
+        }
     }
 }
 

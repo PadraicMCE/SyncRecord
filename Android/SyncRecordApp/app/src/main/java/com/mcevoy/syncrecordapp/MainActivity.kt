@@ -1,6 +1,7 @@
 package com.mcevoy.syncrecordapp
 //TODO: Disable buttons when socket connection with host is lost.
 import android.Manifest
+import android.app.DownloadManager
 import android.content.ContentValues
 import android.content.ContentValues.TAG
 import android.content.Context
@@ -33,6 +34,7 @@ import android.net.Uri
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.provider.MediaStore.Audio
 import android.util.Log
@@ -63,9 +65,6 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 import okhttp3.Request
-import okio.buffer
-import okio.sink
-import com.mcevoy.syncrecordapp.DownloadItem
 
 // Request device microphone
 const val REQUEST_CODE_MIC = 200
@@ -182,6 +181,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             showInputDialog();
             roomTextStatic.isVisible = true
             devNumStatic.isVisible = true
+            btnJoin.isEnabled = false
+            btnCreate.isEnabled = false
         }
         // Button for creating a new array / session
         btnCreate.setOnClickListener {
@@ -195,11 +196,13 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             btnJoin.isEnabled = false
             btnCreate.isEnabled = false
             btnRecord.isVisible = true
-            btnRecord.isEnabled = false
+            btnRecord.isEnabled = true
             btnStop.isVisible = true
             btnStop.isEnabled = false
             btnSyncRecord.isVisible = true
+            btnSyncRecord.isEnabled = true
             btnCalibrate.isVisible = true
+            btnCalibrate.isEnabled = true
             roomTextStatic.isVisible = true
             devNumStatic.isVisible = true
         }
@@ -212,6 +215,10 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
 
         // Button for unsynchronised recording
         btnRecord.setOnClickListener {
+            btnCalibrate.isEnabled = false
+            btnSyncRecord.isEnabled = false
+            btnRecord.isEnabled = false
+            btnStop.isEnabled = true
             recordingDevices = arrayOfNulls(connectedDevices.size)
             stoppedDevices = arrayOfNulls(connectedDevices.size)
             readyDevices = arrayOfNulls(connectedDevices.size)
@@ -238,6 +245,9 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         // Button for localising devices, with no recording
         btnCalibrate.setOnClickListener {
             btnCalibrate.isEnabled = false
+            btnRecord.isEnabled = false
+            btnSyncRecord.isEnabled = false
+            btnStop.isEnabled = true
             recordingDevices = arrayOfNulls(connectedDevices.size)
             stoppedDevices = arrayOfNulls(connectedDevices.size)
             readyDevices = arrayOfNulls(connectedDevices.size)
@@ -253,6 +263,9 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         }
         btnSyncRecord.setOnClickListener {
             btnSyncRecord.isEnabled = false
+            btnRecord.isEnabled = false
+            btnCalibrate.isEnabled = false
+            btnStop.isEnabled = true
             recordingDevices = arrayOfNulls(connectedDevices.size)
             stoppedDevices = arrayOfNulls(connectedDevices.size)
             readyDevices = arrayOfNulls(connectedDevices.size)
@@ -388,87 +401,63 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         val room = data.getString("room")
         val datamaster = data.getString("master")
 
-        if(command == "Start") {
+        if (command == "Start") {
             // Start recording audio
             val calibrating = data.getInt("calibrating")
-            startRecording(timedate,room,datamaster,calibrating)
-        }
-        else if(command == "Stop") {
-            /*
-            runOnUiThread {
-                debugText.text = "Stop Received"
-            }
-            */
+            startRecording(timedate, room, datamaster, calibrating)
+        } else if (command == "Stop") {
             val calibrating = data.getInt("calibrating")
-            stopRecording(timedate,room,datamaster,calibrating)
-        }
-        else if(command == "Started" && master) {
-
-            runOnUiThread {
-                debugText.text = "Received Started from device"
-            }
-
+            stopRecording(timedate, room, datamaster, calibrating)
+        } else if (command == "Started" && master) {
             val device = data.getString("device")
             val devInArray = data.getString("devinarray")
             val calibrating = data.getInt("calibrating")
 
-            recordingDevices[devInArray.toInt()-1] = 1
+            recordingDevices[devInArray.toInt() - 1] = 1
             val allRecording = recordingDevices.all { it == 1 }
-            if(recordingDevices.size == connectedDevices.size && allRecording) {
-                runOnUiThread {
-                    debugText.text = "All recording devices started"
-                }
-                if(calibrating > 0){
+            if (recordingDevices.size == connectedDevices.size && allRecording) {
+                if (calibrating > 0) {
                     //Start the PRBS sequences
                     val sendData = JSONObject()
-                    sendData.put("timedate",timedate)
-                    sendData.put("command","PRBSPlay")
-                    sendData.put("device",connectedDevices[0].toString())
-                    sendData.put("room",room)
-                    sendData.put("master",datamaster)
-                    if(calibrating == 1) sendData.put("calibrating",1)
-                    else if(calibrating == 2) sendData.put("calibrating",2)
+                    sendData.put("timedate", timedate)
+                    sendData.put("command", "PRBSPlay")
+                    sendData.put("device", connectedDevices[0].toString())
+                    sendData.put("room", room)
+                    sendData.put("master", datamaster)
+                    if (calibrating == 1) sendData.put("calibrating", 1)
+                    else if (calibrating == 2) sendData.put("calibrating", 2)
                     socketManager.sendDistanceRecord(sendData)
-                }
-                else{
+                } else {
                     // Not localising or synchronising
                     // Do something?
-
                 }
             }
-        }
-        else if(command == "Stopped" && master) {
-            /*
-            runOnUiThread {
-                debugText.text = "Received Started from device"
-            }
-            */
-            //val device = data.getString("device")
+        } else if (command == "Stopped" && master) {
             val devInArray = data.getString("devinarray")
             val calibrating = data.getInt("calibrating")
 
-            stoppedDevices[devInArray.toInt()-1] = 1
+            stoppedDevices[devInArray.toInt() - 1] = 1
             val allStopped = stoppedDevices.all { it == 1 }
-            if(stoppedDevices.size == connectedDevices.size && allStopped) {
-                if(calibrating > 0){
+            if (stoppedDevices.size == connectedDevices.size && allStopped) {
+                if (calibrating > 0) {
                     val sendData = JSONObject()
-                    sendData.put("timedate",timedate)
-                    sendData.put("command","Sync")
-                    sendData.put("room",room)
+                    sendData.put("timedate", timedate)
+                    sendData.put("command", "Sync")
+                    sendData.put("room", room)
                     sendData.put("devices", connectedDevices.size)
-                    sendData.put("master",datamaster)
-                    if(calibrating == 1) sendData.put("calibrating",1)
-                    else if(calibrating == 2) sendData.put("calibrating",2)
+                    sendData.put("master", datamaster)
+                    if (calibrating == 1) sendData.put("calibrating", 1)
+                    else if (calibrating == 2) sendData.put("calibrating", 2)
                     // Send message after 1 second
                     val handler = Handler(Looper.getMainLooper())
                     handler.postDelayed({
                         socketManager.sendDistanceRecord(sendData)
                     }, 1000)
                 }
-                if(calibrating == 0) {
+                if (calibrating == 0) {
                     val sendData = JSONObject()
                     sendData.put("timedate", timedate)
-                    sendData.put("command", "SyncAudio")
+                    sendData.put("command", "Download")
                     sendData.put("devices", connectedDevices.size)
                     sendData.put("room", room)
                     sendData.put("master", datamaster)
@@ -476,74 +465,54 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     socketManager.sendDistanceRecord(sendData)
                 }
             }
-        }
-        else if(command == "PRBSPlay") {
-            /*
-            runOnUiThread {
-                Toast.makeText(
-                    this,
-                    "Received PRBS Play",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-            */
-            //mediaPlayer = MediaPlayer.create(this, R.raw.prbs1_seq_100)
-            //mediaPlayer.start()
-            //mediaPlayer.setOnCompletionListener {
+        } else if (command == "PRBSPlay") {
             playBinaryAudio {
                 // Tell master this device has finished playing the PRBS
                 //val devinarray = data.get("devinarray")
                 val calibrating = data.getInt("calibrating")
                 val sendData = JSONObject()
-                sendData.put("timedate",timedate)
-                sendData.put("command","PRBSFinished")
-                sendData.put("room",room)
-                sendData.put("master",datamaster)
-                sendData.put("deviceNo",deviceText.text)
-                sendData.put("devinarray",deviceText.text)
-                sendData.put("calibrating",calibrating)
+                sendData.put("timedate", timedate)
+                sendData.put("command", "PRBSFinished")
+                sendData.put("room", room)
+                sendData.put("master", datamaster)
+                sendData.put("deviceNo", deviceText.text)
+                sendData.put("devinarray", deviceText.text)
+                sendData.put("calibrating", calibrating)
                 // Send message
                 socketManager.sendDistanceRecord(sendData)
             }
-        }
-        else if(command == "PRBSFinished" && master) {
+        } else if (command == "PRBSFinished" && master) {
             val devInArray = data.getString("devinarray")
             val calibrating = data.getInt("calibrating")
             // If all devices are not finished -> Send play command to next device
-            readyDevices[devInArray.toInt()-1] = 1
+            readyDevices[devInArray.toInt() - 1] = 1
             val allFinished = readyDevices.all { it == 1 }
-            if(readyDevices.size == connectedDevices.size && allFinished) {
+            if (readyDevices.size == connectedDevices.size && allFinished) {
                 // All devices finished playing PRBS
-                runOnUiThread {
-                    Toast.makeText(
-                        this,
-                        "Received PRBS finished from Device $devInArray All devices ready: $allFinished",
-                        Toast.LENGTH_LONG
-                    ).show()
+                if (calibrating == 1) {
+                    // Run Python script to determine time lags
+                    val sendData = JSONObject()
+                    sendData.put("timedate", timedate)
+                    //sendData.put("command","Sync")
+                    sendData.put("command", "Stop")
+                    sendData.put("room", room)
+                    sendData.put("master", datamaster)
+                    sendData.put("calibrating", calibrating)
+                    // Send message after 1 second
+                    val handler = Handler(Looper.getMainLooper())
+                    handler.postDelayed({
+                        socketManager.sendDistanceRecord(sendData)
+                    }, 1000)
                 }
-                // Run Python script to determine time lags
-                val sendData = JSONObject()
-                sendData.put("timedate",timedate)
-                //sendData.put("command","Sync")
-                sendData.put("command","Stop")
-                sendData.put("room",room)
-                sendData.put("master",datamaster)
-                sendData.put("calibrating",calibrating)
-                // Send message after 1 second
-                val handler = Handler(Looper.getMainLooper())
-                handler.postDelayed({
-                    socketManager.sendDistanceRecord(sendData)
-                }, 1000)
-            }
-            else {
+            } else {
                 // All devices not finished -> Send play command to the next device
                 val sendData = JSONObject()
-                sendData.put("timedate",timedate)
-                sendData.put("command","PRBSPlay")
-                sendData.put("device",connectedDevices[devInArray.toInt()])
-                sendData.put("room",room)
-                sendData.put("master",datamaster)
-                sendData.put("calibrating",calibrating)
+                sendData.put("timedate", timedate)
+                sendData.put("command", "PRBSPlay")
+                sendData.put("device", connectedDevices[devInArray.toInt()])
+                sendData.put("room", room)
+                sendData.put("master", datamaster)
+                sendData.put("calibrating", calibrating)
                 // Send message
                 val handler = Handler(Looper.getMainLooper())
                 handler.postDelayed({
@@ -559,10 +528,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 }
                 */
             }
-        }
-
-        else if(command == "ReadyForSync" && master) {
-            runOnUiThread{
+        } else if (command == "ReadyForSync" && master) {
+            runOnUiThread {
                 Toast.makeText(
                     this,
                     "Microphone array is calibrated.",
@@ -573,7 +540,17 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 btnCalibrate.isEnabled = true
                 btnSyncRecord.isEnabled = true
             }
+        } else if (command == "ReadyForDownload" && master) {
+            val room = data.getString("room")
+            val timedate = data.getString("timedate")
+            val filename = "${timedate}_sync.zip"
+            val relativePath = "tmp/${room}/${filename}"
+            // Get base URL for server-side
+            val baseUrl = "https://${CLOUD_SERVER_DOMAIN}:${SERVER_PORT}"
+            val fullUrl = "${baseUrl}/${relativePath}"
+            downloadFile(fullUrl, filename)
         }
+
 
     }
     override fun onReceivedJoinedRoom(data: JSONObject) {
@@ -641,9 +618,9 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         val isUnprocessedAudioSupported = audioManager.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED)
 
         if (isUnprocessedAudioSupported != null && isUnprocessedAudioSupported == "true") {
-            Toast.makeText(this, "Unprocessed audio source is supported.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Unprocessed audio access is supported.", Toast.LENGTH_LONG).show()
         } else {
-            Toast.makeText(this, "Unprocessed audio source is not supported on this device. Results might be inaccurate", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Unprocessed audio access is not supported on this device. Results might not be accurate", Toast.LENGTH_LONG).show()
         }
     }
     // Handle audio recording. A new thread grabs and forwards audio to server
@@ -721,6 +698,16 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     btnCalibrate.isEnabled = false
                 }
             }
+            if(btnRecord.isEnabled) {
+                runOnUiThread {
+                    btnRecord.isEnabled = false
+                }
+            }
+            if(btnSyncRecord.isEnabled) {
+                runOnUiThread {
+                    btnSyncRecord.isEnabled = false
+                }
+            }
         }
 
         val data = JSONObject()
@@ -739,9 +726,29 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             audioRecord.stop()
             audioRecord.release()
         }
-        /*
-        btnCalibrate.isEnabled = true
-        */
+
+        if(master) {
+            if(!btnCalibrate.isEnabled) {
+                runOnUiThread {
+                    btnCalibrate.isEnabled = true
+                }
+            }
+            if(!btnRecord.isEnabled) {
+                runOnUiThread {
+                    btnRecord.isEnabled = true
+                }
+            }
+            if(!btnSyncRecord.isEnabled) {
+                runOnUiThread {
+                    btnSyncRecord.isEnabled = true
+                }
+            }
+            if(btnStop.isEnabled) {
+                runOnUiThread {
+                    btnStop.isEnabled = false
+                }
+            }
+        }
         val data = JSONObject()
         data.put("command","Stopped")
         data.put("timedate",timedate)
@@ -944,84 +951,27 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         }
     }
 
-    // Function for downloading audio files from server
-    @OptIn(DelicateCoroutinesApi::class)
-    private fun startDownload(link: String) {
-        //val serverIp = "YOUR_SERVER_IP" // **IMPORTANT: Replace with your Node.js server's IP**
-        //val serverPort = 3000 // Match your Node.js server port
-
-        //val identifier = "test_user" // Or get this dynamically (e.g., user ID)
-        val downloadUrl = "http://$socketAddress/tmp/$link"
-        val fileName = "${link}.zip"
-
-        Toast.makeText(this, "Starting download...", Toast.LENGTH_SHORT).show()
-
-        // Use a Coroutine for network operations to avoid blocking the main thread
-        GlobalScope.launch(Dispatchers.IO) { // Run on a background thread
-            val client = OkHttpClient()
-            val request = Request.Builder().url(downloadUrl).build()
-
-            try {
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        launch(Dispatchers.Main) {
-                            Toast.makeText(this@MainActivity, "Download failed: ${response.code}", Toast.LENGTH_LONG).show()
-                        }
-                        Log.e(TAG, "Download failed: ${response.code} - ${response.message}")
-                        return@launch
-                    }
-
-                    // --- Save file using MediaStore (Recommended for Android 10+) ---
-                    val contentValues = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                        put(MediaStore.MediaColumns.MIME_TYPE, "application/zip")
-                        // Use RELATIVE_PATH to put it directly in the Downloads folder
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                    }
-
-                    var uri: Uri? = null
-                    try {
-                        contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)?.let { insertedUri ->
-                            uri = insertedUri
-                            contentResolver.openOutputStream(insertedUri)?.use { outputStream ->
-                                response.body?.source()?.readAll(outputStream.sink())
-                            }
-                            launch(Dispatchers.Main) {
-                                Toast.makeText(this@MainActivity, "Download complete: $fileName", Toast.LENGTH_LONG).show()
-                            }
-                            Log.d(TAG, "File downloaded to: $insertedUri")
-                        } ?: run {
-                            throw Exception("Failed to create new MediaStore entry for $fileName")
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error saving file via MediaStore: ${e.message}", e)
-                        // If an error occurred, try to delete the partially created entry
-                        uri?.let { contentResolver.delete(it, null, null) }
-                        launch(Dispatchers.Main) {
-                            Toast.makeText(this@MainActivity, "Error saving file: ${e.message}", Toast.LENGTH_LONG).show()
-                        }
-                    }
-
-                    // --- OR: Save to app-specific external storage (alternative for app-private files) ---
-                    // This is for files your app primarily uses and doesn't need to be user-discoverable in Downloads
-                    /*
-                    val appSpecificDownloadsDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-                    val appSpecificFile = File(appSpecificDownloadsDir, fileName)
-                    appSpecificFile.outputStream().use { output ->
-                        response.body?.source()?.readAll(output.sink())
-                    }
-                    launch(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "Download complete (App-specific): $fileName", Toast.LENGTH_LONG).show()
-                    }
-                    Log.d(TAG, "File downloaded to app-specific: ${appSpecificFile.absolutePath}")
-                    */
-                }
-            } catch (e: Exception) {
-                launch(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Network error: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-                Log.e(TAG, "Network error:", e)
+    // Function for downloading the file to the phone downloads folder
+    private fun downloadFile(url: String, fileName: String) {
+        try {
+            val request = DownloadManager.Request(Uri.parse(url))
+                .setTitle(fileName) // Title for the notification
+                .setDescription("Downloading sync file") // Description for the notification
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                .setAllowedOverMetered(true) // Allow download over cellular data
+                .setAllowedOverRoaming(true)
+            val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            downloadManager.enqueue(request) // Enqueue the download
+            runOnUiThread {
+                Toast.makeText(this, "Download started for $fileName", Toast.LENGTH_LONG).show()
             }
+            Log.d("Download", "Download enqueued for URL: $url")
+        } catch (e: Exception) {
+            runOnUiThread {
+                Toast.makeText(this, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+            Log.e("Download", "Failed to start download", e)
         }
     }
 

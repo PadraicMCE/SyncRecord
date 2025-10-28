@@ -31,7 +31,7 @@ const { DH_UNABLE_TO_CHECK_GENERATOR } = require('constants');
 const { deserialize } = require('v8');
 
 
-const PORT = 8443 || process.env.PORT;
+const PORT = 3000 || process.env.PORT;
 // For remote deployment ssl certificates:
 
 var https_options = {
@@ -99,8 +99,9 @@ io.on('connection', socket => {
 		}
 	});
 
-    socket.on('joinRoom', (room) =>
+    socket.on('joinRoom', function(message)
 	{
+		room = message.room;
 		socket.join(room);
 		var id = socket.id;
 		console.log(id);
@@ -214,6 +215,7 @@ io.on('connection', socket => {
 		//console.log('Received "distanceRecord" with command: '+message.command+' from: '+socket.id);
 		if(message.command == 'Started')
 		{
+			console.log("Started received by: "+socket.id)
 			try{
 				io.to(message.master).emit('distanceRecord',{
 					timedate: message.timedate,
@@ -302,6 +304,7 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'Stop')
 		{
+			console.log("Stop command recieved")
 			io.to(message.room).emit('distanceRecord',{
 				timedate: message.timedate,
 				command: message.command,
@@ -312,6 +315,7 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'Start')
 		{
+			console.log("Start command recieved")
 			io.to(message.room).emit('distanceRecord',{
 				timedate: message.timedate,
 				command: 'Start',
@@ -334,6 +338,7 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'Stopped')
 		{
+			console.log("Stopped received by: "+socket.id)
 			//Log local time of prbs being played
 			fs.appendFile('./public/tmp/'+message.room+'/'+message.timedate,
 			'stoppedrecord '+message.devinarray+': '+message.localtime+'\r',
@@ -407,8 +412,10 @@ io.on('connection', socket => {
 			//console.log(deviceList);
 			// Flush buffers to file for each device in the room
 			i = 1;
+			if (message.calibrating == 1) j = 1;
+			else j = 0;
 			deviceList.forEach(deviceId => {
-				flushBufferToFile(message.room, deviceId, message.timedate, i, 0, (err) => {
+				flushBufferToFile(message.room, deviceId, message.timedate, i, j, (err) => {
 				if (err) {
 					console.error(`Error flushing buffer to file for device ${deviceId} in room ${roomId}:`, err);
 				} else {
@@ -417,26 +424,19 @@ io.on('connection', socket => {
 				});
 				i = i + 1;
 			});
-			/*
-			console.log('Buffer size: '+buffers[message.room][socket.id].length);
-			flushBufferToFile(message.room, message.timedate, message.devinarray, 0, (err) => {
-				if (err) {
-				  console.error('Error writing remaining buffer to file:', err);
-				}
-			});*/
 			//Run python script to determine synchronisation of audio channels
-			var arguments = [];
+			var scriptArgs = [];
 			// Added in for calibration file.
-			arguments.push(message.room)
-			arguments.push('./public/tmp/'+message.room+'/'+message.timedate);
+			scriptArgs.push(message.room)
+			scriptArgs.push('./public/tmp/'+message.room+'/'+message.timedate);
 			for (let i = 1; i <= message.devinarray; i++)
 			{
-				arguments.push('./public/tmp/'+message.room+'/'+message.timedate+'_'+i+'_temp.pcm');
+				scriptArgs.push('./public/tmp/'+message.room+'/'+message.timedate+'_'+i+'_temp.pcm');
 			}
 			let options = {
 				mode: 'text',
 				pythonOptions: ['-u'], // get print results in real-time
-				args: arguments
+				args: scriptArgs
 			};
 			// Create a new PythonShell instance
 			//let pyshell = new PythonShell('./ReadAudio.py', options);
@@ -468,18 +468,6 @@ io.on('connection', socket => {
 					calibrating: message.calibrating
 				});
 			});
-			/*
-			PythonShell.run('./ReadAudio.py', options).then(messages=>
-			{
-				io.to(message.master).emit('distanceRecord',
-				{
-					timedate: message.timedate,
-					command: 'ReadyForSync',
-					room: message.room,
-					master: message.master
-				});
-			});
-			*/
 		}
 		else if(message.command == 'SyncAudio')
 		{	
@@ -509,21 +497,50 @@ io.on('connection', socket => {
 			});
 			//Run python script to synchronise audio channels
 			//Run python script to determine synchronisation of audio channels
-			/*
-			var arguments = [];
-			arguments.push('./public/tmp/'+message.room+'/'+message.timedate+'_sync');
+			
+			var scriptArgs = [];
+			scriptArgs.push(message.room)
+			scriptArgs.push('./public/tmp/'+message.room+'/'+message.timedate+'_sync');
 			for (let i = 1; i <= message.devices; i++)
 			{
-				arguments.push('./public/tmp/'+message.room+'/'+message.timedate+'_'+i+'.pcm');
+				scriptArgs.push('./public/tmp/'+message.room+'/'+message.timedate+'_'+i+'.pcm');
 			}
 			let options = {
 				mode: 'text',
 				pythonOptions: ['-u'], // get print results in real-time
-				args: arguments,
+				args: scriptArgs,
 			  };
 			
 			const pythonScript = 'SyncAudio.py';
 			const pyshell = new PythonShell(pythonScript, options);
+			// Capture messages from the Python script
+			pyshell.on('message', function (message) {
+				console.log('Python message:', message);
+			});
+
+			// Capture error messages from the Python script
+			pyshell.on('stderr', function (stderrMessage) {
+				console.error('Python stderr:', stderrMessage);
+			});
+
+			// Handle errors
+			pyshell.on('error', function (error) {
+				console.error('Python error:', error);
+			});
+
+			// Handle when the script finishes
+			pyshell.on('close', function () {
+				const audioFile = './tmp/'+message.room+'/'+message.timedate+'_sync.zip';
+				io.to(message.master).emit('distanceRecord',
+				{
+					timedate: message.timedate,
+					command: 'ReadyForDownload',
+					room: message.room,
+					master: message.master,
+					file: audioFile
+				});
+			});
+			/*
 			// Optional: Handle script termination
 			pyshell.end((err, code, signal) => {
 				if (err) {

@@ -3,25 +3,15 @@ import matplotlib.pyplot as plt
 import csv
 import sys
 from numpy.fft import fft, ifft
-from itertools import combinations
+from itertools import combinations, groupby
 import numpy as np
 from scipy.signal import argrelextrema
 from scipy import interpolate
 from scipy.ndimage import median_filter                   
 import pandas as pd
-import json
+import matplotlib.pyplot as plt
 import os
 # --------------- Functions --------------------------
-'''
-def findLocalMaxima(arr):
-    """
-    Finds local maxima in a 1D array.
-    Equivalent to Matlab's islocalmax or a simple peak finding algorithm.
-    """
-    # argrelextrema returns indices of local maxima
-    # order=1 ensures it finds peaks where the immediate neighbors are smaller
-    return argrelextrema(arr, np.greater, order=1)[0]
-'''
 
 def findLocalMaxima(data):
     """
@@ -59,25 +49,6 @@ def findLocalMaxima(data):
     return local_maxima_indices
 
 def find_first_major_peak_dynamic_threshold(fine_time, spline_fit):
-    """
-    Finds the first major peak in a signal (spline_fit) using a dynamic threshold.
-    A major peak is defined as a local maximum that exceeds a threshold,
-    calculated as a rolling median of the signal plus 3 times its standard deviation.
-
-    Args:
-        fine_time (np.ndarray): 1D array of x-coordinates (e.g., time values)
-                                corresponding to spline_fit.
-        spline_fit (np.ndarray): 1D array of y-values (the interpolated signal).
-
-    Returns:
-        tuple:
-            - first_major_peak (list): A list [x_coordinate, y_value] of the
-              first major peak found. Returns an empty list `[]` if no major
-              peak is found or if there's insufficient data.
-            - threshold_values (np.ndarray): The calculated dynamic threshold
-              array, or an empty NumPy array `np.array([])` if there's
-              insufficient data for threshold calculation or local maxima.
-    """
     fine_time = np.asarray(fine_time)
     spline_fit = np.asarray(spline_fit)
 
@@ -151,6 +122,96 @@ def find_first_major_peak_dynamic_threshold(fine_time, spline_fit):
 
     return first_major_peak, threshold_values
 
+def find_major_peaks(signal, num_peaks, min_distance, plot=False, threshold_multiplier=5):
+    """
+    Finds a specified number of major peaks in a signal using a dynamic threshold
+    and enforcing a minimum distance between peaks.
+
+    Args:
+        signal (numpy.ndarray): The 1D signal to analyze
+        num_peaks (int): The number of major peaks to find.
+        min_distance (int): The minimum number of samples between peaks.
+        plot (bool): If True, displays a plot of the signal and detected peaks.
+        threshold_multiplier (int): Multiplier for the rolling standard deviation.
+
+    Returns:
+        list: A sorted list of indices of the found major peaks.
+    """
+    if len(signal) < 5:
+        return []
+    
+    # 1. Calculate dynamic threshold
+    # Use a window size that is a fraction of the signal length, e.g., 1/10th
+    window_size = max(1, int(np.round(len(signal) / 10)))
+    if window_size % 2 == 0:
+        window_size += 1
+    
+    baseline = median_filter(signal, size=window_size, mode='nearest')
+
+    # Calculate a rolling standard deviation for a more adaptive threshold
+    signal_series = pd.Series(signal)
+    local_std = signal_series.rolling(window=window_size, center=True, min_periods=1).std().to_numpy()
+
+    # The new threshold is the baseline plus a multiple of the local standard deviation
+    threshold = baseline + (threshold_multiplier * local_std)
+
+
+    # 2. Find all local maxima
+    all_peak_indices = findLocalMaxima(signal)
+    if not all_peak_indices:
+        return []
+
+    # 3. Filter peaks that are above the dynamic threshold
+    major_peak_indices = [p for p in all_peak_indices if signal[p] > threshold[p]]
+
+    if not major_peak_indices:
+        return []
+
+    # 4. Sort peaks by their amplitude in descending order
+    sorted_peaks = sorted(major_peak_indices, key=lambda p: signal[p], reverse=True)
+
+    # 5. Select the top peaks, ensuring minimum distance
+    final_peaks = []
+    for peak_idx in sorted_peaks:
+        if all(abs(peak_idx - fp) >= min_distance for fp in final_peaks):
+            final_peaks.append(peak_idx)
+    final_peaks = sorted(final_peaks)
+
+    # Return the sorted indices of the top 'num_peaks'
+    if plot:
+        plt.figure(figsize=(12, 6))
+        plt.plot(signal, label='Correlation Signal')
+        plt.plot(threshold, label='Dynamic Threshold', color='red')
+        plt.scatter(sorted(final_peaks), signal[sorted(final_peaks)], color='green', label='Detected Peaks', zorder=5)
+        plt.xlabel('Sample Index')
+        plt.ylabel('Amplitude')
+        plt.legend()
+        plt.title('Correlation Signal with Dynamic Threshold and Peaks')
+        plt.show()
+
+    bad_peaks = []
+    for peak_idx in range(0,len(final_peaks)-1):
+        #print(f"Current index {peak_idx}: {final_peaks[peak_idx]}")
+        if(peak_idx == 0):
+            if(abs(final_peaks[peak_idx]-final_peaks[peak_idx+1])>770):
+                print(f"Distance between peaks {peak_idx}and{peak_idx+1}: {abs(final_peaks[peak_idx]-final_peaks[peak_idx+1])}")
+                bad_peaks.append(peak_idx)
+        if(peak_idx > 0):
+            if(abs(final_peaks[peak_idx]-final_peaks[peak_idx+1])>770 and abs(final_peaks[peak_idx]-final_peaks[peak_idx-1])>770):
+                bad_peaks.append(peak_idx)
+        if(peak_idx == len(final_peaks)-1):
+            if(abs(final_peaks[peak_idx]-final_peaks[peak_idx-1])>770):
+                bad_peaks.append(peak_idx)
+    
+    # Create a new list that excludes the bad peak indices
+    if bad_peaks:
+        bad_peaks_set = set(bad_peaks)
+        final_peaks = [peak for i, peak in enumerate(final_peaks) if i not in bad_peaks_set]
+
+    # Print the final peak indices for debugging
+    #print(f"Final detected peak indices: {sorted(final_peaks)}")
+    return sorted(final_peaks)[:num_peaks]
+
 # -------------- Main Script -------------
 devices = {}
 for i in range(1,len(sys.argv)-2):
@@ -162,19 +223,6 @@ file_path = sys.argv[2]
 
 sm_distance = 32 # Distance between device speaker and microphone [mm]
 sm_lag = sm_distance / ((1/48)*343)
-'''
-# Not required
-# Read the .txt file associated with group of recordings
-file_path = sys.argv[1]
-# Open file and read it
-with open(file_path, 'r') as file:
-    content = file.read()
-# Delimit data
-delimiters = [' ','\n','\r']
-for delimiter in delimiters:
-    content = ' '.join(content.split(delimiter))
-segments = content.split()
-'''
 
 ## Read Audio from arguments
 audio = {}
@@ -208,25 +256,18 @@ for i in range(1,len(audio)+1):
     correlations[f"corr{i}"] = numpy.correlate(a=audio[f"audio{i}"], v=data1)
     correlations[f"corr{i}"] = correlations[f"corr{i}"]/numpy.max(numpy.abs(correlations[f"corr{i}"]))
     correlations_copy[f"corr{i}"] = numpy.copy(correlations[f"corr{i}"])
-#print(f"Correlations: {len(correlations)}")
+
 # Detect peaks of each PRBS in each cross-correlation
 for i in range(1,len(correlations)+1):
-    correlation_peaks[f"corr{i}"] = []
-    correlation_peaks[f"corr{i}"].append(numpy.nanargmax(correlations[f"corr{i}"]))
-    correlations[f"corr{i}"][correlation_peaks[f"corr{i}"][0]-bz:correlation_peaks[f"corr{i}"][0]+bz] = 0
-    for j in range(1,len(devices)*3):
-        correlation_peaks[f"corr{i}"].append(numpy.nanargmax(correlations[f"corr{i}"]))
-        correlations[f"corr{i}"][correlation_peaks[f"corr{i}"][j]-bz:correlation_peaks[f"corr{i}"][j]+bz] = 0
+    num_expected_peaks = len(devices) * 3
+    correlation_peaks[f"corr{i}"] = find_major_peaks(correlations[f"corr{i}"], num_expected_peaks, bz, plot=False, threshold_multiplier=5)
 
 # Create file to save distance / sync information
 file_path_sync = f"{file_path}_sync"
 
-
 # Sort correlation peaks
 for i in range(1, len(devices)+1):
     correlation_peaks[f"corr{i}"] = numpy.sort(correlation_peaks[f"corr{i}"])
-    #with open(file_path_sync, 'a') as file:
-        #file.write(f"Recording {i} correlation peaks: {correlation_peaks[f'cp{i}']} \n")
 
 #Round robin pairs
 devices_list = list(range(1,len(devices)+1))
@@ -396,4 +437,3 @@ print(f"-"*30)
 
 #print("End of script")
 ### ----- Testing plots ------
-

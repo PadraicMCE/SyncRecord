@@ -16,12 +16,12 @@ for download.
 '''
 #Create dictionary filled with a dictionary for each device
 devices = {}
-for i in range(1,len(sys.argv) - 1):
+for i in range(1, len(sys.argv) - 2):
     var_name = f"Device{i}"
     devices[var_name] = {}
 
 #Read .txt file associated with the recordings
-file_path = sys.argv[1]
+file_path = sys.argv[2]
 # Open the file for reading
 with open(file_path, 'r') as file:
     content = file.read()
@@ -29,7 +29,6 @@ delimiters = [' ','\n','\r']
 for delimiter in delimiters:
     content = ' '.join(content.split(delimiter))
 segments  = content.split()
-
 
 # Check data in segments for mov{i}_{j}_{i}
 # Create an array of mismatches between devices
@@ -67,8 +66,8 @@ for i in range(0, len(segments),2):
 # Read audio from arguments
 audio = {}
 recordings = {}
-for i in range(1,len(sys.argv)-1):
-    audio[f"audio{i}"] = numpy.memmap(sys.argv[i+1], dtype='int16', mode='r+')
+for i in range(1, len(sys.argv) - 1): # Corrected to iterate through all audio files
+    audio[f"audio{i}"] = numpy.memmap(sys.argv[i+2], dtype='int16', mode='r+')
     #audio[f"audio{i}"] = numpy.memmap(sys.argv[i+1], dtype='float32', mode='r+')
 meanmismatches = {}
 for key in mismatches.keys():
@@ -109,19 +108,19 @@ multichannel_data = numpy.column_stack(channels)
 
 #Save audio channels seperately and in zip file
 sample_rate = 48000
-for i in range(1,len(sys.argv)-1):
+for i in range(1,len(sys.argv)-2):
     #parse file extension
-    base = os.path.basename(sys.argv[i+1])
+    base = os.path.basename(sys.argv[i+2])
     base, ext = os.path.splitext(base)
-    directory = os.path.dirname(sys.argv[i+1])
+    directory = os.path.dirname(sys.argv[i+2])
     #Change directory where wav files are created
-    scipy.io.wavfile.write(f"{directory}/{base}_sync.wav", sample_rate, channels[i-1])
+    scipy.io.wavfile.write(f"{directory}/{base}_sync.wav", sample_rate, channels[i-2])
 
-with zipfile.ZipFile(f"{sys.argv[1]}.zip", 'w') as zipf:
+with zipfile.ZipFile(f"{sys.argv[2]}.zip", 'w') as zipf:
     #Add audio channel files
-    for i in range(1,len(sys.argv)-1):#
-        base = os.path.basename(sys.argv[i+1])
+    for i in range(1,len(sys.argv)-2):#
+        base = os.path.basename(sys.argv[i+2])
         base, ext = os.path.splitext(base)
         zipf.write(f"{base}_sync.wav",f"{base}_sync.wav")
-        zipf.write(sys.argv[i+1],f"{base}.pcm")
-    zipf.write(sys.argv[1],f"data.txt")
+        zipf.write(sys.argv[i+2],f"{base}.pcm")
+    zipf.write(sys.argv[2],f"data.txt")

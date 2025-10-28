@@ -94,6 +94,7 @@ class SocketManager(private val context: Context, private val currentInstanceCal
                 }
 
                 internalSocket?.connect()
+                lastConnectedUri = savedSocketAddress
                 currentActiveCallback?.connectionErrorMessage("") // Clear previous error messages
                 Log.d("SocketManager.Companion", "Socket connecting to: $savedSocketAddress")
                 isInternalSocketInitialized = true

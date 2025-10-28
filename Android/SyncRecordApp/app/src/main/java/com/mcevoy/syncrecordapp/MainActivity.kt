@@ -108,6 +108,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     private lateinit var btnRecord: Button
     private lateinit var btnStop: Button
     private lateinit var btnCalibrate: Button
+    private lateinit var btnSyncRecord: Button
     // Download audio files
     //private lateinit var downloadFilesRecyclerView: RecyclerView
     //private lateinit var downloadFilesAdapter: DownloadFilesAdapter
@@ -123,7 +124,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     // Lazy initialization for self-signed certificate and its fingerprint
     private val selfSignedCert: X509Certificate by lazy {
         val cf: CertificateFactory = CertificateFactory.getInstance("X.509")
-        val caInput: InputStream = resources.openRawResource(R.raw.cert) // Make sure R.raw.cert points to your .crt file
+        val caInput: InputStream = resources.openRawResource(R.raw.cert) // Make sure R.raw.cert points to your .crt/.pem file
         caInput.use { cf.generateCertificate(it) } as X509Certificate
     }
     private val selfSignedCertFingerprint: String by lazy { extractCertFingerprint(selfSignedCert) }
@@ -163,6 +164,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         btnRecord = findViewById(R.id.recordButton)
         btnStop = findViewById(R.id.stopButton)
         btnCalibrate = findViewById(R.id.calibrateButton)
+        btnSyncRecord = findViewById(R.id.SyncRecordBtn)
         debugText = findViewById(R.id.textView)
         roomText = findViewById(R.id.textViewRoom)
         deviceText = findViewById(R.id.textViewDevNum)
@@ -174,12 +176,14 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         initSocketManager(currentServerType, currentSocketAddress)
         //socketManager = SocketManager(socketAddress,this)
 
+        // Button for joining an existing array / session
         btnJoin.setOnClickListener {
             // Popup window to enter array unique ID.
             showInputDialog();
             roomTextStatic.isVisible = true
             devNumStatic.isVisible = true
         }
+        // Button for creating a new array / session
         btnCreate.setOnClickListener {
             // TODO: Create Array sequence
             arrayToken = generateRandomCode(4)
@@ -194,10 +198,19 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             btnRecord.isEnabled = false
             btnStop.isVisible = true
             btnStop.isEnabled = false
+            btnSyncRecord.isVisible = true
             btnCalibrate.isVisible = true
             roomTextStatic.isVisible = true
             devNumStatic.isVisible = true
         }
+
+        /* Calibrating codes:
+            0 : Recording with no synchronisation
+            1 : Localising devices with no recording
+            2 : Synchronised recording -> Localising, synchronising and recording
+         */
+
+        // Button for unsynchronised recording
         btnRecord.setOnClickListener {
             recordingDevices = arrayOfNulls(connectedDevices.size)
             stoppedDevices = arrayOfNulls(connectedDevices.size)
@@ -209,18 +222,20 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             data.put("numDevices",connectedDevices.size.toString())
             data.put("room",arrayToken)
             data.put("master",socketManager.getSocketId().toString())
-            data.put("calibrating",false)
+            data.put("calibrating",0)
             socketManager.sendDistanceRecord(data)
         }
+        // Button for stopping recording
         btnStop.setOnClickListener {
             val data = JSONObject()
             data.put("command","Stop")
             data.put("room",arrayToken)
             data.put("timedate",ed)
             data.put("master",socketManager.getSocketId().toString())
-            data.put("calibrating",false)
+            data.put("calibrating",0)
             socketManager.sendDistanceRecord(data)
         }
+        // Button for localising devices, with no recording
         btnCalibrate.setOnClickListener {
             btnCalibrate.isEnabled = false
             recordingDevices = arrayOfNulls(connectedDevices.size)
@@ -233,7 +248,22 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             data.put("numDevices",connectedDevices.size.toString())
             data.put("room",arrayToken)
             data.put("master",socketManager.getSocketId().toString())
-            data.put("calibrating",true)
+            data.put("calibrating",1)
+            socketManager.sendDistanceRecord(data)
+        }
+        btnSyncRecord.setOnClickListener {
+            btnSyncRecord.isEnabled = false
+            recordingDevices = arrayOfNulls(connectedDevices.size)
+            stoppedDevices = arrayOfNulls(connectedDevices.size)
+            readyDevices = arrayOfNulls(connectedDevices.size)
+            ed = Instant.now().toEpochMilli().toString()
+            val data = JSONObject()
+            data.put("command","Start")
+            data.put("timedate",ed)
+            data.put("numDevices",connectedDevices.size.toString())
+            data.put("room",arrayToken)
+            data.put("master",socketManager.getSocketId().toString())
+            data.put("calibrating",2)
             socketManager.sendDistanceRecord(data)
         }
         val buttonOpenMenu: ImageButton = findViewById(R.id.button_open_menu)
@@ -360,7 +390,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
 
         if(command == "Start") {
             // Start recording audio
-            val calibrating = data.getBoolean("calibrating")
+            val calibrating = data.getInt("calibrating")
             startRecording(timedate,room,datamaster,calibrating)
         }
         else if(command == "Stop") {
@@ -369,7 +399,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 debugText.text = "Stop Received"
             }
             */
-            val calibrating = data.getBoolean("calibrating")
+            val calibrating = data.getInt("calibrating")
             stopRecording(timedate,room,datamaster,calibrating)
         }
         else if(command == "Started" && master) {
@@ -380,7 +410,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
 
             val device = data.getString("device")
             val devInArray = data.getString("devinarray")
-            val calibrating = data.getBoolean("calibrating")
+            val calibrating = data.getInt("calibrating")
 
             recordingDevices[devInArray.toInt()-1] = 1
             val allRecording = recordingDevices.all { it == 1 }
@@ -388,7 +418,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 runOnUiThread {
                     debugText.text = "All recording devices started"
                 }
-                if(calibrating){
+                if(calibrating > 0){
                     //Start the PRBS sequences
                     val sendData = JSONObject()
                     sendData.put("timedate",timedate)
@@ -396,10 +426,12 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     sendData.put("device",connectedDevices[0].toString())
                     sendData.put("room",room)
                     sendData.put("master",datamaster)
-                    sendData.put("calibrating",true)
+                    if(calibrating == 1) sendData.put("calibrating",1)
+                    else if(calibrating == 2) sendData.put("calibrating",2)
                     socketManager.sendDistanceRecord(sendData)
                 }
                 else{
+                    // Not localising or synchronising
                     // Do something?
 
                 }
@@ -413,33 +445,34 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             */
             //val device = data.getString("device")
             val devInArray = data.getString("devinarray")
-            val calibrating = data.getBoolean("calibrating")
+            val calibrating = data.getInt("calibrating")
 
             stoppedDevices[devInArray.toInt()-1] = 1
             val allStopped = stoppedDevices.all { it == 1 }
             if(stoppedDevices.size == connectedDevices.size && allStopped) {
-                if(calibrating){
+                if(calibrating > 0){
                     val sendData = JSONObject()
                     sendData.put("timedate",timedate)
                     sendData.put("command","Sync")
                     sendData.put("room",room)
                     sendData.put("devices", connectedDevices.size)
                     sendData.put("master",datamaster)
-                    sendData.put("calibrating",true)
+                    if(calibrating == 1) sendData.put("calibrating",1)
+                    else if(calibrating == 2) sendData.put("calibrating",2)
                     // Send message after 1 second
                     val handler = Handler(Looper.getMainLooper())
                     handler.postDelayed({
                         socketManager.sendDistanceRecord(sendData)
                     }, 1000)
                 }
-                if(!calibrating) {
+                if(calibrating == 0) {
                     val sendData = JSONObject()
                     sendData.put("timedate", timedate)
                     sendData.put("command", "SyncAudio")
                     sendData.put("devices", connectedDevices.size)
                     sendData.put("room", room)
                     sendData.put("master", datamaster)
-                    sendData.put("calibrating", false)
+                    sendData.put("calibrating", 0)
                     socketManager.sendDistanceRecord(sendData)
                 }
             }
@@ -460,7 +493,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             playBinaryAudio {
                 // Tell master this device has finished playing the PRBS
                 //val devinarray = data.get("devinarray")
-                val calibrating = data.getBoolean("calibrating")
+                val calibrating = data.getInt("calibrating")
                 val sendData = JSONObject()
                 sendData.put("timedate",timedate)
                 sendData.put("command","PRBSFinished")
@@ -475,7 +508,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         }
         else if(command == "PRBSFinished" && master) {
             val devInArray = data.getString("devinarray")
-            val calibrating = data.getBoolean("calibrating")
+            val calibrating = data.getInt("calibrating")
             // If all devices are not finished -> Send play command to next device
             readyDevices[devInArray.toInt()-1] = 1
             val allFinished = readyDevices.all { it == 1 }
@@ -538,6 +571,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                 btnRecord.isEnabled = true
                 btnStop.isEnabled = true
                 btnCalibrate.isEnabled = true
+                btnSyncRecord.isEnabled = true
             }
         }
 
@@ -613,7 +647,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         }
     }
     // Handle audio recording. A new thread grabs and forwards audio to server
-    private fun startRecording(timedate: String, room: String, datamaster: String, calibrating: Boolean){
+    private fun startRecording(timedate: String, room: String, datamaster: String, calibrating: Int){
         if(!permissionGranted){
             ActivityCompat.requestPermissions(this, permissions, REQUEST_CODE_MIC)
             return
@@ -699,7 +733,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         data.put("calibrating",calibrating)
         socketManager.sendDistanceRecord(data)
     }
-    private fun stopRecording(timedate: String, room: String, datamaster: String, calibrating: Boolean){
+    private fun stopRecording(timedate: String, room: String, datamaster: String, calibrating: Int){
         if(isRecording){
             isRecording = false
             audioRecord.stop()

@@ -9,15 +9,16 @@
 
     <Button
         android:id="@+id/calibrateButton"
-        android:layout_width="230dp"
+        android:layout_width="115dp"
         android:layout_height="70dp"
         android:text="Calibrate Array"
         android:visibility="invisible"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.82"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="@+id/imageView"
-        app:layout_constraintVertical_bias="0.68" />
+        app:layout_constraintVertical_bias="0.812" />
 
     <Button
         android:id="@+id/joinButton"
@@ -57,8 +58,8 @@
         android:id="@+id/textViewRoomStatic"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="76dp"
-        android:layout_marginTop="124dp"
+        android:layout_marginStart="64dp"
+        android:layout_marginTop="88dp"
         android:text="Array UID:"
         android:visibility="invisible"
         app:layout_constraintStart_toStartOf="parent"
@@ -129,10 +130,10 @@
         android:visibility="invisible"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.78"
+        app:layout_constraintHorizontal_bias="0.82"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.812" />
+        app:layout_constraintVertical_bias="0.671" />
 
     <ImageButton
         android:id="@+id/button_open_menu"
@@ -147,5 +148,16 @@
         app:layout_constraintTop_toBottomOf="@+id/imageView"
         app:layout_constraintVertical_bias="0.0"
         app:srcCompat="@drawable/ic_settings" />
+
+    <Button
+        android:id="@+id/SyncRecordBtn"
+        android:layout_width="115dp"
+        android:layout_height="75dp"
+        android:text="Synchronised Record"
+        android:visibility="invisible"
+        app:layout_constraintBottom_toTopOf="@+id/recordButton"
+        app:layout_constraintEnd_toStartOf="@+id/stopButton"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/createButton" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

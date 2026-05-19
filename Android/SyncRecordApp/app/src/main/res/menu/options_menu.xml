@@ -6,9 +6,10 @@
         android:title="Socket Address"
         android:icon="@drawable/ic_settings"
         app:showAsAction="ifRoom" />
-
+    <!--
     <item
         android:id="@+id/action_view_downloads"
         android:title="View Downloads"
         app:showAsAction="ifRoom" />
+    -->
 </menu>

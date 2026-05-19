@@ -582,20 +582,22 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
     private fun showPopupMenu(view: android.view.View) {
         val popup = PopupMenu(this, view)
         val inflater: MenuInflater = popup.menuInflater
-        inflater.inflate(R.menu.options_menu, popup.menu) // Assuming R.menu.options_menu is correct
+        inflater.inflate(R.menu.options_menu, popup.menu) // R.menu.options_menu
         popup.setOnMenuItemClickListener { item: MenuItem ->
             when (item.itemId) {
-                R.id.action_socket_address -> { // Assuming this is your menu item ID
+                R.id.action_socket_address -> { // menu item ID
                     val dialog = SettingsDialogFragment.newInstance(currentSocketAddress, currentServerType)
                     dialog.show(supportFragmentManager, "SettingsDialog")
                     true
                 }
+                /*
                 R.id.action_view_downloads -> { // Assuming this is your menu item ID
                     val intent = Intent(this, DownloadsActivity::class.java)
                     // No need to pass via Intent if DownloadsActivity will read from SharedPreferences
                     startActivity(intent)
                     true
                 }
+                */
                 else -> false
             }
         }

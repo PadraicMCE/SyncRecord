@@ -11,6 +11,18 @@ from scipy.ndimage import median_filter
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+
+# --------------- Variables --------------------------
+# Correlation window size. For interpolation.
+window_size = 255
+windows = {}
+interpolated_windows = {}
+local_peaks = {}
+major_peaks = {}
+lags = {}
+distances = {}
+valid_peak_positions = {}
+
 # --------------- Functions --------------------------
 
 def findLocalMaxima(data):
@@ -18,199 +30,189 @@ def findLocalMaxima(data):
     Finds local maxima in a 1D data array where a point is a local maximum
     if it's strictly greater than both of its two preceding samples
     AND both of its two succeeding samples.
-
     Args:
         data (numpy.ndarray or list): The 1D data vector.
-
-    Returns:
-        list: A list of 0-indexed positions (indices) of the local maxima.
-              Returns an empty list if there are fewer than 5 data points
-              or no local maxima are found.
     """
-    data = np.asarray(data) # Ensure it's a NumPy array
-
-    # We need at least 5 points for data[i-2] and data[i+2] to be valid
-    # (i.e., i=2 must have i-2=0, i=len(data)-3 must have i+2=len(data)-1)
+    data = np.asarray(data) #NumPy array
+    # At least 5 points for data[i-2] and data[i+2] to be valid
     if len(data) < 5:
         return []
-
     local_maxima_indices = []
-
-    # Loop from the 3rd element (index 2) to the 3rd-to-last element (index len(data)-3).
-    # This ensures data[i-2], data[i-1], data[i+1], and data[i+2] are always valid indices.
-    for i in range(2, len(data) - 2): # Python range stops BEFORE the end value
-        # Check if the current point is strictly greater than all four neighbors
+    for i in range(2, len(data) - 2):
         if (data[i] > data[i - 1] and
             data[i] > data[i - 2] and
             data[i] > data[i + 1] and
             data[i] > data[i + 2]):
-            local_maxima_indices.append(i) # Append the 0-indexed position
-
+            local_maxima_indices.append(i)
     return local_maxima_indices
 
 def find_first_major_peak_dynamic_threshold(fine_time, spline_fit):
+    """
+    Finds the first major peak in a signal (spline_fit) using a dynamic threshold.
+    A major peak is a local maximum that exceeds a threshold,
+    calculated as a rolling median of the signal plus 2 times its standard deviation.
+    Args:
+        fine_time (np.ndarray): 1D array of x-coordinates.
+        spline_fit (np.ndarray): 1D array of y-values.
+    """
     fine_time = np.asarray(fine_time)
     spline_fit = np.asarray(spline_fit)
-
-    # Initialize return values for early exit
+    # Initialise return values for early exit
     first_major_peak = []
     threshold_values = np.array([]) # Default to empty NumPy array if no threshold
-
-    # 1. Find all local maxima
-    # Using order=1 to match the basic definition of local maxima (greater than immediate neighbors).
-    # If your findLocalMaxima MATLAB function used a different "order" (e.g., checking 2 neighbors),
-    # change `order` here accordingly (e.g., `order=2`).
+    # Find all local maxima
     peak_indices = findLocalMaxima(spline_fit)
-
     # Check if any local maxima were found or if signal is too short for threshold calculation
-    if len(peak_indices) == 0 or len(spline_fit) < 3: # Need at least 3 for argrelmax(order=1) and movmedian
+    if len(peak_indices) == 0 or len(spline_fit) < 3: 
         return first_major_peak, threshold_values
-
     # Get the values of the spline_fit at the identified peak_indices
     peak_values_at_maxima = spline_fit[peak_indices]
-
-    # 2. Dynamic threshold calculation (rolling median)
+    # Dynamic threshold calculation
     # Calculate window size, ensuring it's an integer and at least 1.
     # If the window size is even, add 1 to make it odd for median_filter symmetry.
     window_size_raw = len(spline_fit) / 10
     window_size = int(np.round(window_size_raw))
-    if window_size == 0: # Handle cases where length is very small leading to 0
+    if window_size == 0:
         window_size = 1
-    if window_size % 2 == 0: # Ensure window_size is odd for median_filter
+    if window_size % 2 == 0:
         window_size += 1
-    
-    # Check if window_size is greater than length of signal - this could happen if signal is very short
+    # Check if window_size is greater than length of signal
     if window_size > len(spline_fit):
-        window_size = len(spline_fit) # Use full signal length as window, will result in single median
-
+        window_size = len(spline_fit) # Use full signal length as window
     # Calculate baseline using moving median
-    # `mode='nearest'` handles boundary conditions by extending the nearest value.
-    baseline = median_filter(spline_fit, size=window_size, mode='nearest')
-
-    # Calculate threshold: baseline + 3 * standard deviation of the whole spline_fit
-    # `ddof=1` matches MATLAB's default sample standard deviation (divides by N-1).
+    baseline = median_filter(abs(spline_fit), size=window_size, mode='nearest')
+    # Calculate threshold: baseline + 2 * standard deviation of the whole spline_fit
     global_std = np.std(spline_fit, ddof=1)
-    threshold = baseline + 3 * global_std
-
+    threshold = baseline + 2 * global_std
     # Store the calculated threshold values
     threshold_values = threshold
-
-    # 3. Find the first peak exceeding the dynamic threshold
+    # Find the first peak exceeding the dynamic threshold
     # Create a boolean array where True means the peak value at that index
-    # (within `peak_values_at_maxima`) is greater than its corresponding threshold value.
     major_peak_condition = (peak_values_at_maxima > threshold[peak_indices])
-
-    # `np.where(condition)[0]` gives the 0-indexed positions within the `peak_indices` array
     # where the condition is True.
     major_peak_indices_in_peak_indices_array = np.where(major_peak_condition)[0]
-
     # Check if any major peaks were found
     if len(major_peak_indices_in_peak_indices_array) == 0:
         return first_major_peak, threshold_values # Return empty list
-
-    # Get the index of the first major peak (this index refers to the `peak_indices` array)
+    # Get the index of the first major peak
     first_major_peak_relative_idx = major_peak_indices_in_peak_indices_array[0]
-
-    # Get the actual 0-indexed position of this major peak in the original `spline_fit` and `fine_time` arrays
+    # Get the actual position of this major peak in the original `spline_fit` and `fine_time` arrays
     first_major_peak_original_index = peak_indices[first_major_peak_relative_idx]
-
     # Extract the fineTime and splineFit values for this peak
     first_major_peak = [
         fine_time[first_major_peak_original_index],
         spline_fit[first_major_peak_original_index]
     ]
-
     return first_major_peak, threshold_values
 
-def find_major_peaks(signal, num_peaks, min_distance, plot=False, threshold_multiplier=5):
+def find_all_groups(corr_data, spacing=765, tolerance=10):
     """
-    Finds a specified number of major peaks in a signal using a dynamic threshold
-    and enforcing a minimum distance between peaks.
-
-    Args:
-        signal (numpy.ndarray): The 1D signal to analyze
-        num_peaks (int): The number of major peaks to find.
-        min_distance (int): The minimum number of samples between peaks.
-        plot (bool): If True, displays a plot of the signal and detected peaks.
-        threshold_multiplier (int): Multiplier for the rolling standard deviation.
-
-    Returns:
-        list: A sorted list of indices of the found major peaks.
+    Finds all sets of three peaks spaced by 'spacing' samples.
     """
-    if len(signal) < 5:
-        return []
-    
-    # 1. Calculate dynamic threshold
-    # Use a window size that is a fraction of the signal length, e.g., 1/10th
-    window_size = max(1, int(np.round(len(signal) / 10)))
-    if window_size % 2 == 0:
-        window_size += 1
-    
-    baseline = median_filter(signal, size=window_size, mode='nearest')
+    # Find all local maxima
+    all_peaks = findLocalMaxima(corr_data)
+    # Dynamic threshold
+    baseline = median_filter(corr_data, size=int((len(corr_data)/10)+1), mode='nearest')
+    global_std = np.std(corr_data, ddof=1)
+    threshold = baseline + 3.5 * global_std
+    # Filter by a threshold
+    discovered_peak_condition = (corr_data > threshold)
+    major_peaks = np.where(discovered_peak_condition)[0]
+    groups = []
+    # Pattern match for the 3-peak sequence (p1, p2, p3)
+    for p1 in major_peaks:
+        # Target for second peak
+        p2_target = p1 + spacing
+        p2_matches = [p for p in major_peaks if abs(p - p2_target) <= tolerance]
+        if p2_matches:
+            for p2 in p2_matches:
+                # Target for third peak
+                p3_target = p2 + spacing
+                p3_matches = [p for p in major_peaks if abs(p - p3_target) <= tolerance]
+                if p3_matches:
+                    for p3 in p3_matches:
+                        # Triplet found and added to list.
+                        groups.append((p1, p2, p3))
+    return groups
 
-    # Calculate a rolling standard deviation for a more adaptive threshold
-    signal_series = pd.Series(signal)
-    local_std = signal_series.rolling(window=window_size, center=True, min_periods=1).std().to_numpy()
+def validate_and_correct_peak_groups(peak_indices, amplitudes, expected_spacing=765, tolerance=10, max_group_size=3):
+    """
+    Identifies chains of peaks and selects the subgroup of 3 with the highest 
+    combined amplitude.
+    """
+    # Map each peak index to its corresponding amplitude
+    amp_lookup = {idx: amp for idx, amp in zip(peak_indices, amplitudes)}
+    # Sort the unique indices to ensure they get processed in order
+    sorted_peaks = sorted(list(set(peak_indices)))
+    valid_grps = []
+    used_indices = set()
+    i = 0
+    while i < len(sorted_peaks):
+        if sorted_peaks[i] in used_indices:
+            i += 1
+            continue   
+        # Start a new potential group
+        current_group = [sorted_peaks[i]]
+        # Build the chain based on spacing
+        for j in range(i + 1, len(sorted_peaks)):
+            last_peak = current_group[-1]
+            next_peak = sorted_peaks[j]
+            if abs(next_peak - last_peak - expected_spacing) <= tolerance:
+                current_group.append(next_peak)
+            elif next_peak - last_peak > expected_spacing + tolerance:
+                break
+        # If the chain is long enough, find the best subgroup of 3
+        if len(current_group) >= max_group_size:
+            best_subgroup = []
+            max_sum = -1.0 # Assuming amplitudes are positive
+            # Slide the window (size 3) across the found chain
+            for start in range(len(current_group) - max_group_size + 1):
+                subgroup = current_group[start : start + max_group_size]
+                # Sum the amplitudes using the lookup dictionary
+                current_sum = sum(amp_lookup[p] for p in subgroup) 
+                if current_sum > max_sum:
+                    max_sum = current_sum
+                    best_subgroup = subgroup
+            valid_grps.append(tuple(best_subgroup))
+            # Mark the entire chain as used to avoid overlapping groups
+            used_indices.update(current_group)
+        i += 1
+    # Identify problematic peaks
+    flattened_valid = [p for grp in valid_grps for p in grp]
+    problematic_peaks = [p for p in sorted_peaks if p not in flattened_valid]
+    return valid_grps, problematic_peaks
 
-    # The new threshold is the baseline plus a multiple of the local standard deviation
-    threshold = baseline + (threshold_multiplier * local_std)
-
-
-    # 2. Find all local maxima
-    all_peak_indices = findLocalMaxima(signal)
-    if not all_peak_indices:
-        return []
-
-    # 3. Filter peaks that are above the dynamic threshold
-    major_peak_indices = [p for p in all_peak_indices if signal[p] > threshold[p]]
-
-    if not major_peak_indices:
-        return []
-
-    # 4. Sort peaks by their amplitude in descending order
-    sorted_peaks = sorted(major_peak_indices, key=lambda p: signal[p], reverse=True)
-
-    # 5. Select the top peaks, ensuring minimum distance
-    final_peaks = []
-    for peak_idx in sorted_peaks:
-        if all(abs(peak_idx - fp) >= min_distance for fp in final_peaks):
-            final_peaks.append(peak_idx)
-    final_peaks = sorted(final_peaks)
-
-    # Return the sorted indices of the top 'num_peaks'
-    if plot:
-        plt.figure(figsize=(12, 6))
-        plt.plot(signal, label='Correlation Signal')
-        plt.plot(threshold, label='Dynamic Threshold', color='red')
-        plt.scatter(sorted(final_peaks), signal[sorted(final_peaks)], color='green', label='Detected Peaks', zorder=5)
-        plt.xlabel('Sample Index')
-        plt.ylabel('Amplitude')
-        plt.legend()
-        plt.title('Correlation Signal with Dynamic Threshold and Peaks')
-        plt.show()
-
-    bad_peaks = []
-    for peak_idx in range(0,len(final_peaks)-1):
-        #print(f"Current index {peak_idx}: {final_peaks[peak_idx]}")
-        if(peak_idx == 0):
-            if(abs(final_peaks[peak_idx]-final_peaks[peak_idx+1])>770):
-                print(f"Distance between peaks {peak_idx}and{peak_idx+1}: {abs(final_peaks[peak_idx]-final_peaks[peak_idx+1])}")
-                bad_peaks.append(peak_idx)
-        if(peak_idx > 0):
-            if(abs(final_peaks[peak_idx]-final_peaks[peak_idx+1])>770 and abs(final_peaks[peak_idx]-final_peaks[peak_idx-1])>770):
-                bad_peaks.append(peak_idx)
-        if(peak_idx == len(final_peaks)-1):
-            if(abs(final_peaks[peak_idx]-final_peaks[peak_idx-1])>770):
-                bad_peaks.append(peak_idx)
-    
-    # Create a new list that excludes the bad peak indices
-    if bad_peaks:
-        bad_peaks_set = set(bad_peaks)
-        final_peaks = [peak for i, peak in enumerate(final_peaks) if i not in bad_peaks_set]
-
-    # Print the final peak indices for debugging
-    #print(f"Final detected peak indices: {sorted(final_peaks)}")
-    return sorted(final_peaks)[:num_peaks]
+def revalidate_problematic_peaks(problematic_peaks, corr_data, valid_groups, window_size=500, spacing=765, tolerance=10):
+    """
+    Revalidates problematic peaks by checking windows around them for valid groups.
+    """
+    # Flatten valid groups to avoid duplicates
+    valid_peak_positions_temp = [peak for group in valid_groups for peak in group]
+    new_peaks = []
+    for peak in problematic_peaks:
+        # Extract window around the problematic peak
+        start = (peak - int(window_size / 2))
+        end = (peak + int(window_size / 2))
+        window = corr_data[start:end]
+        window = window / np.max(np.abs(window))
+        # Interpolate the window
+        x_coordinates = np.arange(len(window))
+        num_points = (len(window) - 1) * 10 + 1
+        fineSamples = np.linspace(0, len(window) - 1, num_points)
+        f_cubic = interpolate.interp1d(x_coordinates, window, kind='cubic')
+        interpolated_window = f_cubic(fineSamples)
+        # Find the first major peak in the interpolated window
+        first_major_peak = find_first_major_peak_dynamic_threshold(fineSamples, interpolated_window)
+        if not first_major_peak:
+            continue  # Skip if no major peak is found
+        if(first_major_peak[0]):
+            major_peak_pos = int(start + first_major_peak[0][0])  # Convert back to window index
+        new_peaks.append(major_peak_pos)
+    new_amplitudes = corr_data[new_peaks]
+    valid_peaks, problem_peaks = validate_and_correct_peak_groups(
+        new_peaks, new_amplitudes, expected_spacing=765, tolerance=peak_tolerance, max_group_size=3
+    )
+    return valid_peaks
 
 # -------------- Main Script -------------
 devices = {}
@@ -223,6 +225,9 @@ file_path = sys.argv[2]
 
 sm_distance = 32 # Distance between device speaker and microphone [mm]
 sm_lag = sm_distance / ((1/48)*343)
+
+# Tolerance for sample gap between peaks in a group (should be 765)
+peak_tolerance = 2
 
 ## Read Audio from arguments
 audio = {}
@@ -240,7 +245,6 @@ for row in csvdata1:
 data1 = numpy.array(data1)
 
 ## Normalise amplitudes
-data1 = data1 + data1 + data1
 data1 = data1/(numpy.max(numpy.abs(data1)))
 for i in range(1,len(audio)+1):
     audio[f"audio{i}"] = audio[f"audio{i}"] / (numpy.max(numpy.abs(audio[f"audio{1}"])))
@@ -252,15 +256,77 @@ bz = 755
 correlations ={}
 correlation_peaks = {}
 correlations_copy = {}
+valid_groups = {}
+problematic_peaks = {}
+
 for i in range(1,len(audio)+1):
     correlations[f"corr{i}"] = numpy.correlate(a=audio[f"audio{i}"], v=data1)
     correlations[f"corr{i}"] = correlations[f"corr{i}"]/numpy.max(numpy.abs(correlations[f"corr{i}"]))
     correlations_copy[f"corr{i}"] = numpy.copy(correlations[f"corr{i}"])
 
-# Detect peaks of each PRBS in each cross-correlation
+# Find initial peaks in correlations. Top amplitude peaks 3* number of devices.
 for i in range(1,len(correlations)+1):
-    num_expected_peaks = len(devices) * 3
-    correlation_peaks[f"corr{i}"] = find_major_peaks(correlations[f"corr{i}"], num_expected_peaks, bz, plot=False, threshold_multiplier=5)
+    correlation_peaks[f"corr{i}"] = []
+    correlation_peaks[f"corr{i}"].append(numpy.nanargmax(correlations[f"corr{i}"]))
+    correlations[f"corr{i}"][correlation_peaks[f"corr{i}"][0]-bz:correlation_peaks[f"corr{i}"][0]+bz] = 0
+    for j in range(1,len(devices)*3):
+        correlation_peaks[f"corr{i}"].append(numpy.nanargmax(correlations[f"corr{i}"]))
+        correlations[f"corr{i}"][correlation_peaks[f"corr{i}"][j]-bz:correlation_peaks[f"corr{i}"][j]+bz] = 0
+    correlation_peaks[f"corr{i}"] = np.sort(correlation_peaks[f"corr{i}"])
+
+# Validate and correct peaks for each device dynamically
+for i in range(1, len(correlations) + 1):
+    # Check valid groups in the peaks
+    valid_groups[f"corr{i}"], problematic_peaks[f"corr{i}"] = validate_and_correct_peak_groups(
+        correlation_peaks[f"corr{i}"], correlations_copy[f"corr{i}"][correlation_peaks[f"corr{i}"]], expected_spacing=765, tolerance=peak_tolerance, max_group_size=3
+    )
+    valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
+    if len(valid_groups[f"corr{i}"]) < len(devices):
+        # Preprocess: Remove problematic peaks that are already in valid groups
+        valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
+        problematic_peaks[f"corr{i}"] = [peak for peak in problematic_peaks[f"corr{i}"] if peak not in valid_peak_positions_temp]
+        # Copy of correlation stream to zero out valid groups.
+        corr = np.copy(correlations_copy[f"corr{i}"])
+        for peak in valid_peak_positions_temp:
+            corr[peak-bz:peak+bz] = 0
+        # Cycle through peaks again
+        corr_peaks = []
+        corr_peaks.append(numpy.nanargmax(corr))
+        corr[corr_peaks[0]-bz:corr_peaks[0]+bz] = 0
+        for j in range(1,len(devices)*3):
+            corr_peaks.append(numpy.nanargmax(corr))
+            corr[corr_peaks[j]-bz:corr_peaks[j]+bz] = 0
+        valid_groups_temp, problematic_peaks_temp = validate_and_correct_peak_groups(
+            corr_peaks, correlations_copy[f"corr{i}"][corr_peaks], expected_spacing=765, tolerance=3, max_group_size=3
+        )
+        if(valid_groups_temp):
+            valid_groups[f"corr{i}"].extend(valid_groups_temp)
+        if(len(valid_groups[f"corr{i}"]) < len(devices)):
+            valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
+            problematic_peaks[f"corr{i}"] = [peak for peak in problematic_peaks[f"corr{i}"] if peak not in valid_peak_positions_temp]
+            completed_groups = revalidate_problematic_peaks(
+                problematic_peaks_temp, numpy.copy(correlations_copy[f"corr{i}"]), valid_groups[f"corr{i}"],
+                window_size=window_size, spacing=765, tolerance=peak_tolerance
+            )
+            if(completed_groups):
+                valid_groups[f"corr{i}"].extend(completed_groups)
+        valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
+        correlation_peaks[f"corr{i}"] = [x for x in correlation_peaks[f"corr{i}"] if x in valid_peak_positions_temp]
+    elif (len(valid_groups[f"corr{i}"]) < len(devices)):
+        print(f"Too many valid groups in correlation {i}")
+    # Sort by the first peak in each group    
+    valid_groups[f"corr{i}"] = sorted(valid_groups[f"corr{i}"], key=lambda x: x[0])
+    potential_reflections = find_additional_groups_near_valid_groups(correlations_copy[f"corr{i}"].copy(), valid_groups[f"corr{i}"], window_size=1000, spacing=765, tolerance=2)
+    if(potential_reflections):
+        most_likely_reflection = min(potential_reflections, key=lambda x: x[0])
+        closest_group = min(valid_groups[f"corr{i}"], key=lambda x: abs(x[1] - most_likely_reflection[1]))
+        potential_reflections = None
+        if(most_likely_reflection[1] < closest_group[1]):
+            # Reconstruct the list: if it's the match, swap it; otherwise, keep it.
+            valid_groups[f"corr{i}"] = [most_likely_reflection if x == closest_group else x for x in valid_groups[f"corr{i}"]]
+    # Flatten valid groups into a list of peak positions
+    valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
+    problematic_peak_positions = problematic_peaks[f"corr{i}"]
 
 # Create file to save distance / sync information
 file_path_sync = f"{file_path}_sync"
@@ -275,20 +341,15 @@ recordings = list(range(1,len(devices)+1))
 device_pairs = list(combinations(devices_list,2))
 recording_pairs = list(combinations(recordings,2))
 
-# Correlation window size. For interpolation.
-window = 255
-windows = {}
-interpolated_windows = {}
-local_peaks = {}
-major_peaks = {}
-lags = {}
-distances = {}
-
 # Get sample differences across all pairs of devices
 for (r1, r2) in recording_pairs:
+    
+    valid_peak_positions[f"corr{r1}"] = [peak for group in valid_groups[f"corr{r1}"] for peak in group]
+    valid_peak_positions[f"corr{r2}"] = [peak for group in valid_groups[f"corr{r2}"] for peak in group]
+
     # Device 1 PRBS 1
     window = numpy.copy(correlations_copy[f"corr{r1}"])
-    window = window[correlation_peaks[f"corr{r1}"][(r1*3)-2]-255:correlation_peaks[f"corr{r1}"][(r1*3)-2]+255]
+    window = window[valid_peak_positions[f"corr{r1}"][(r1*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r1}"][(r1*3)-2]+int(window_size/2)]
     window = window / numpy.max(numpy.abs(window))
     windows[f"corr{r1}_{r1}"] =  numpy.copy(window)
     ## Interpolated Spline
@@ -309,16 +370,9 @@ for (r1, r2) in recording_pairs:
     major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r1}_{r1}"])
     major_peaks[f"corr{r1}_{r1}"] = major_peak[0][0]
 
-    # For testing
-    #fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(12, 10))
-    #axes[0, 0].plot(interpolated_windows[f"corr{r1}_{r1}"])
-    #axes[0, 0].stem(peaks,interpolated_windows[f"corr{r1}_{r1}"][peaks],linefmt='r--',markerfmt='ro')
-    #axes[0, 0].stem((major_peak[0][0]-1)*10+1,major_peak[0][1],linefmt='g--',markerfmt='go')
-    #axes[0, 0].plot(major_peak[1])
-
     # Device 1 PRBS 2
     window = numpy.copy(correlations_copy[f"corr{r1}"])
-    window = window[correlation_peaks[f"corr{r1}"][(r2*3)-1]-255:correlation_peaks[f"corr{r1}"][(r2*3)-1]+255]
+    window = window[valid_peak_positions[f"corr{r1}"][(r2*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r1}"][(r2*3)-2]+int(window_size/2)]
     window = window / numpy.max(numpy.abs(window))
     windows[f"corr{r1}_{r2}"] =  numpy.copy(window)
     ## Interpolated Spline
@@ -339,15 +393,9 @@ for (r1, r2) in recording_pairs:
     major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r1}_{r2}"])
     major_peaks[f"corr{r1}_{r2}"] = major_peak[0][0]
 
-    # For testing
-    #axes[0, 1].plot(interpolated_windows[f"corr{r1}_{r2}"])
-    #axes[0, 1].stem(peaks,interpolated_windows[f"corr{r1}_{r2}"][peaks],linefmt='r--',markerfmt='ro')
-    #axes[0, 1].stem((major_peak[0][0]-1)*10+1,major_peak[0][1],linefmt='g--',markerfmt='go')
-    #axes[0, 1].plot(major_peak[1])
-
     # Device 2 PRBS 2
     window = numpy.copy(correlations_copy[f"corr{r2}"])
-    window = window[correlation_peaks[f"corr{r2}"][(r2*3)-1]-255:correlation_peaks[f"corr{r2}"][(r2*3)-1]+255]
+    window = window[valid_peak_positions[f"corr{r2}"][(r2*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r2}"][(r2*3)-2]+int(window_size/2)]
     window = window / numpy.max(numpy.abs(window))
     windows[f"corr{r2}_{r2}"] =  numpy.copy(window)
     ## Interpolated Spline
@@ -368,15 +416,9 @@ for (r1, r2) in recording_pairs:
     major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r2}_{r2}"])
     major_peaks[f"corr{r2}_{r2}"] = major_peak[0][0]
 
-    ## For testing
-    #axes[1, 1].plot(interpolated_windows[f"corr{r2}_{r2}"])
-    #axes[1, 1].stem(peaks,interpolated_windows[f"corr{r2}_{r2}"][peaks],linefmt='r--',markerfmt='ro')
-    #axes[1, 1].stem((major_peak[0][0]-1)*10+1,major_peak[0][1],linefmt='g--',markerfmt='go')
-    #axes[1, 1].plot(major_peak[1])
-
     #Device 2 PRBS 1
     window = numpy.copy(correlations_copy[f"corr{r2}"])
-    window = window[correlation_peaks[f"corr{r2}"][(r1*3)-1]-255:correlation_peaks[f"corr{r2}"][(r1*3)-1]+255]
+    window = window[valid_peak_positions[f"corr{r2}"][(r1*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r2}"][(r1*3)-2]+int(window_size/2)]
     window = window / numpy.max(numpy.abs(window))
     windows[f"corr{r2}_{r1}"] =  numpy.copy(window)
     ## Interpolated Spline
@@ -397,31 +439,21 @@ for (r1, r2) in recording_pairs:
     major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r2}_{r1}"])
     major_peaks[f"corr{r2}_{r1}"] = major_peak[0][0]
 
-    # For testing
-    #axes[1, 0].plot(interpolated_windows[f"corr{r2}_{r1}"])
-    #axes[1, 0].stem(peaks,interpolated_windows[f"corr{r2}_{r1}"][peaks],linefmt='r--',markerfmt='ro')
-    #axes[1, 0].stem((major_peak[0][0]-1)*10+1,major_peak[0][1],linefmt='g--',markerfmt='go')
-    #axes[1, 0].plot(major_peak[1])
-
-    delta1 = numpy.abs((major_peaks[f"corr{r1}_{r1}"]+correlation_peaks[f"corr{r1}"][(r1*3)-2]-255-sm_lag)-(major_peaks[f"corr{r1}_{r2}"]+correlation_peaks[f"corr{r1}"][(r2*3)-2]-255))
-    delta2 = numpy.abs((major_peaks[f"corr{r2}_{r1}"]+correlation_peaks[f"corr{r2}"][(r1*3)-2]-255)-(major_peaks[f"corr{r2}_{r2}"]+correlation_peaks[f"corr{r2}"][(r2*3)-2]-255-sm_lag))
+    delta1 = numpy.abs((major_peaks[f"corr{r1}_{r1}"]+valid_peak_positions[f"corr{r1}"][(r1*3)-2]-int(window_size/2)-sm_lag)-(major_peaks[f"corr{r1}_{r2}"]+valid_peak_positions[f"corr{r1}"][(r2*3)-2]-int(window_size/2)))
+    delta2 = numpy.abs((major_peaks[f"corr{r2}_{r1}"]+valid_peak_positions[f"corr{r2}"][(r1*3)-2]-int(window_size/2))-(major_peaks[f"corr{r2}_{r2}"]+valid_peak_positions[f"corr{r2}"][(r2*3)-2]-int(window_size/2)-sm_lag))
     lags[f"lag_{r1}_{r2}"] = numpy.abs(delta1 - delta2)
     distances[f"distance_{r1}_{r2}"] = (lags[f"lag_{r1}_{r2}"]/2)*(1/48)*343
 
-    # For testing
-    #print(f"Distance {r1} {r2} = {distances[f'distance_{r1}_{r2}']}")
-    #plt.show()
-
 ## Save information to file
 # Writing to txt type file
-'''
+
 try:
     with open(array_token,'w') as f:
         for key, value in distances.items():
             f.write(f"{key}: {value}\n")
 except IOError as e:
     print(f"Error writing sync information to file: {e}")
-'''
+
 # Writing to file in JSON format
 '''
 try:
@@ -430,10 +462,10 @@ try:
 except IOError as e:
     print(f"Error writing sync information to file: {e}")
 '''
-
+'''
 for key, value in distances.items():
     print(f"{key}: {value}")
 print(f"-"*30)
-
+'''
 #print("End of script")
 ### ----- Testing plots ------

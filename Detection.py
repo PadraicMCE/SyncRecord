@@ -11,6 +11,7 @@ from scipy.ndimage import median_filter
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+import json
 
 # --------------- Variables --------------------------
 # Correlation window size. For interpolation.
@@ -22,6 +23,10 @@ major_peaks = {}
 lags = {}
 distances = {}
 valid_peak_positions = {}
+# Finding time mismatch
+global_peaks = {}
+localpeaks = {}
+shifts = {}
 
 # --------------- Functions --------------------------
 
@@ -213,6 +218,46 @@ def revalidate_problematic_peaks(problematic_peaks, corr_data, valid_groups, win
         new_peaks, new_amplitudes, expected_spacing=765, tolerance=peak_tolerance, max_group_size=3
     )
     return valid_peaks
+
+def find_additional_groups_near_valid_groups(corr_data, valid_groups, window_size=500, spacing=765, tolerance=1):
+    """
+    Searches for additional groups of peaks near valid groups.
+
+    Args:
+        corr_data (np.ndarray): The correlation data.
+        valid_groups (list): List of valid peak groups (each group is a tuple of 3 peak indices).
+        window_size (int): Size of the region to search around each valid group.
+        spacing (int): Expected spacing between peaks in a group.
+        tolerance (int): Allowed deviation from the expected spacing.
+
+    Returns:
+        list: List of additional groups found near valid groups.
+    """
+    valid_peak_groups = np.concatenate(valid_groups)
+    #print(f"Valid groups in check: {valid_peak_groups}")
+    additional_groups = []
+    for i in valid_peak_groups:
+        corr_data[i-64:i+64] = 0
+
+    for group in valid_groups:
+        # Find the start and end of the window around the group
+        start = max(0, group[0] - window_size)
+        end = min(len(corr_data), group[-1] + window_size)
+
+        # Extract the correlation data in the window
+        window_data = corr_data[start:end]
+
+        # Find all groups in the window
+        all_groups_in_window = find_all_groups(window_data, spacing=spacing, tolerance=tolerance)
+        #print(f"found groups: {all_groups_in_window}")
+        # Convert group indices back to original correlation indices
+        for group_in_window in all_groups_in_window:
+            adjusted_group = tuple(idx + start for idx in group_in_window)
+            # Only add if not already in valid_groups
+            if adjusted_group not in valid_groups:
+                additional_groups.append(adjusted_group)
+
+    return additional_groups
 
 # -------------- Main Script -------------
 devices = {}
@@ -443,10 +488,23 @@ for (r1, r2) in recording_pairs:
     delta2 = numpy.abs((major_peaks[f"corr{r2}_{r1}"]+valid_peak_positions[f"corr{r2}"][(r1*3)-2]-int(window_size/2))-(major_peaks[f"corr{r2}_{r2}"]+valid_peak_positions[f"corr{r2}"][(r2*3)-2]-int(window_size/2)-sm_lag))
     lags[f"lag_{r1}_{r2}"] = numpy.abs(delta1 - delta2)
     distances[f"distance_{r1}_{r2}"] = (lags[f"lag_{r1}_{r2}"]/2)*(1/48)*343
+    localpeaks[f"peak_{r1}_{r1}"]=(major_peaks[f"corr{r1}_{r1}"]+valid_peak_positions[f"corr{r1}"][(r1*3)-2]-int(window_size/2)-sm_lag)
+    localpeaks[f"peak_{r1}_{r2}"]=(major_peaks[f"corr{r1}_{r2}"]+valid_peak_positions[f"corr{r1}"][(r2*3)-2]-int(window_size/2))
+    localpeaks[f"peak_{r2}_{r1}"]=(major_peaks[f"corr{r2}_{r1}"]+valid_peak_positions[f"corr{r2}"][(r1*3)-2]-int(window_size/2))
+    localpeaks[f"peak_{r2}_{r2}"]=(major_peaks[f"corr{r2}_{r2}"]+valid_peak_positions[f"corr{r2}"][(r2*3)-2]-int(window_size/2)-sm_lag)
+    
+    global_peaks[f"g_peak_{r1}_{r1}"]=localpeaks[f"peak_{r1}_{r1}"]
+    global_peaks[f"g_peak_{r2}_{r1}"]=localpeaks[f"peak_{r1}_{r1}"]+(lags[f"lag_{r1}_{r2}"]/2)
+    global_peaks[f"g_peak_{r1}_{r2}"]=localpeaks[f"peak_{r2}_{r2}"]+(lags[f"lag_{r1}_{r2}"]/2)
+    global_peaks[f"g_peak_{r2}_{r2}"]=localpeaks[f"peak_{r2}_{r2}"]
+
+    shifts[f"shift_{r1}_{r2}"]=global_peaks[f"g_peak_{r1}_{r2}"]-localpeaks[f"peak_{r1}_{r2}"]
+    shifts[f"shift_{r2}_{r1}"]=global_peaks[f"g_peak_{r2}_{r1}"]-localpeaks[f"peak_{r2}_{r1}"]
+
 
 ## Save information to file
 # Writing to txt type file
-
+'''
 try:
     with open(array_token,'w') as f:
         for key, value in distances.items():
@@ -456,12 +514,20 @@ except IOError as e:
 
 # Writing to file in JSON format
 '''
+
 try:
-    with open(array_token, 'w') as f:
-        json.dump(distances,f,indent=4)
+    combined_data = {}
+    combined_data.update(distances)
+    combined_data.update(lags)
+    combined_data.update(global_peaks)
+    combined_data.update(localpeaks)
+    combined_data.update(shifts)
+    
+    with open(file_path_sync, 'w') as f:
+        json.dump(combined_data, f, indent=4)
 except IOError as e:
     print(f"Error writing sync information to file: {e}")
-'''
+
 '''
 for key, value in distances.items():
     print(f"{key}: {value}")

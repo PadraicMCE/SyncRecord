@@ -2,8 +2,23 @@
     Written by: Padraic McEvoy
     Last updated 21/12/2023
 ************************************ */
+/* **********************************
+**** Settings for cloud/local deployment ****
+********************************** */
+// Set to true for local deployment/testing
+const local_deploy = true; //false;
+// CLoud server URL for downloads
+const Server_URL = 'syncrecord.eu';
+// https:// does not need to be included here.
+
+
+/* **********************************
+**** Server code ****
+********************************** */
+
 //Using required packages
 const path = require('path');
+const os = require('os');
 // For running remotely, use https
 const https = require('https');
 //const http = require('http');
@@ -15,6 +30,14 @@ const {PythonShell} = require('python-shell');
 const WaveFile = require('wavefile').WaveFile;
 const multer = require('multer');
 const buffers = {};	//Buffers for audio data
+/*
+	PRocess tracker map. Checks what processes are running.
+*/
+//const activeProcessing = new Map();
+//const roomProcessingTasks = new Map();
+const roomProcessingPromises = new Map();
+// Map for masters of each array
+const roomMaster = new Map();   // roomId -> socket.id of the master
 
 const storage = multer.diskStorage({
 	destination: function(req,file,cb) {
@@ -32,39 +55,38 @@ const { deserialize } = require('v8');
 
 
 const PORT = 3000 || process.env.PORT;
-// For remote deployment ssl certificates:
-
-var https_options = {
-	key: fs.readFileSync("./ssl/privkey.pem"),
-    cert: fs.readFileSync("./ssl/cert.pem"),
-    ca: fs.readFileSync("./ssl/fullchain.pem")
-}; 
-
-
-// For local testing a self-signed ssl cert is used:
-/*
-var https_options = {
-	key: fs.readFileSync("./ssl/openssl/privkey.pem"),
-    cert: fs.readFileSync("./ssl/openssl/cert.pem")
-};
-*/
 
 const app = express();
-const server = https.createServer(https_options, app);
-const io = socketio(server);
+//const server = https.createServer(https_options, app);
 //Set static folder
 app.use(express.static('public', { 'extensions': ['html', 'js'], 'content-type': 'application/javascript' }));
 app.use('/build/', express.static(path.join(__dirname, 'node_modules/three/build')));
 app.use('/jsm/', express.static(path.join(__dirname, 'node_modules/three/examples/jsm')));
 app.use('/https/', express.static(path.join(__dirname, 'node_modules/https')));
+// Make the 'tmp' directory publicly accessible for downloads
+app.use('/downloads', express.static(path.join(__dirname, 'public/tmp')));
 
-// Allow downloading of created audio files; New route.
-app.get('/download/:filename', (req, res) => {
-	const filename = req.params.filename;
-	const filepath = path.join(__dirname, '/tmp/', filename);
-  
-	res.sendFile(filepath);
-  });
+// For remote deployment ssl certificates:
+if(!local_deploy)
+{
+	var https_options = {
+		key: fs.readFileSync("./ssl/privkey.pem"),
+		cert: fs.readFileSync("./ssl/cert.pem"),
+		ca: fs.readFileSync("./ssl/fullchain.pem")
+	}; 
+	server = https.createServer(https_options, app);
+}
+if(local_deploy)
+{
+	// For local testing a self-signed ssl cert is used:
+	var https_options = {
+		key: fs.readFileSync("./ssl/openssl/SyncRecord_privkey.pem"),
+		cert: fs.readFileSync("./ssl/openssl/SyncRecord_cert.pem")
+	};
+	server = https.createServer(https_options, app);
+}
+
+const io = socketio(server);
 
 io.on('connection', socket => {
     socket.emit('message', 'Welcome to server');
@@ -78,25 +100,26 @@ io.on('connection', socket => {
 
 	socket.on('disconnect', function(message)
 	{
-		// TODO: Check room of disconnected device.
-		io.emit('devDisconnected',{
-			id: socket.id
-		});
-		// Clear buffers
-		// Clean up buffers for the device
-		for (const roomId in buffers) 
-		{
-			for (const deviceId in buffers[roomId]) 
-			{
-			  //if (socket.id === deviceId) {
-				/*flushBufferToFile(roomId, deviceId, (err) => {
-				  if (err) {
-					console.error('Error writing remaining buffer to file:', err);
-				  } */
-				  delete buffers[roomId][deviceId];
-				//});
+		//Find every room the socket beloings to
+		const rooms = Array.from(socket.rooms).filter(r => r !== socket.id); // socket.id itself is also a “room”
+		//clean up buffers
+		for (const roomId in buffers) {
+			for (const deviceId in buffers[roomId]) {
+				delete buffers[roomId][deviceId];
 			}
 		}
+		rooms.forEach(roomId => {
+			const masterId = roomMaster.get(roomId);
+			if (masterId === socket.id) {
+				// This socket *was* the master → delete the folder
+				console.log(`Master ${socket.id} left room ${roomId}. Cleaning up.`);
+				if(!local_deploy) {
+					deleteRoomFolder(roomId);
+				}
+				// Remove the entry from the map so a new master can be elected later
+				roomMaster.delete(roomId);
+			}
+		});
 	});
 
     socket.on('joinRoom', function(message)
@@ -108,6 +131,12 @@ io.on('connection', socket => {
 		io.to(room).emit('joinedRoom',{
 			id: id
 		});
+		// Check is room exists. If not, set master.
+		if (!roomMaster.has(room)) {
+			// First client that ever joins this room becomes the master
+			roomMaster.set(room, id);
+			console.log(`${id} is now the MASTER of room ${room}`);
+		}
 		//Initialise a new nested buffer for the room
 		if(!buffers[room])
 		{
@@ -115,7 +144,8 @@ io.on('connection', socket => {
 		}
 		if(!buffers[room][id])
 		{
-			buffers[room][id] = [];
+			// Allocate 20MB per device stream. (Approx 3.5 minutes of audio at 48kHz 16-bit mono)
+			buffers[room][id] = Buffer.alloc(20 * 1024 * 1024); // 20MB buffer
 		}
 	});
 
@@ -140,73 +170,43 @@ io.on('connection', socket => {
 
 	socket.on('audioData', function(message)
 	{
-		var filename = './public/tmp/'+message.room+'/'+message.timedate+'_'+message.device+'.pcm';
-		//var filename = message.timedate+'_'+message.device;
-		//data = message.audioData;
-		//console.log(message.audioData.BYTES_PER_ELEMENT);
-		//buffer = Buffer.from(message.audioData.buffer);
-		//console.log(buffer.BYTES_PER_ELEMENT);
-		//saveAudioToFile(message.room, filename, buffer);
-		position = message.totData;
-		samples = message.samples;
+		const roomDir = `./public/tmp/${message.room}`;
+    	const filename = `${message.timedate}_${message.device}.pcm`;
+    	const filePath = path.join(roomDir, filename);
+		// 1. Decode the Base64 data from the client
+		const bufferData = Buffer.from(message.audioData, 'base64');
+		const position = parseInt(message.totData);
+		// Write the audio stream data to the file at the correct position
+		writeToPcmFile(filePath, bufferData, position);
+
+		/*
+		var filename = `./public/tmp/${message.room}/${message.timedate}_${message.device}.pcm`;
+		position = parseInt(message.totData);
+		const bufferData = Buffer.from(message.audioData, 'base64');
+		// Directly write incoming audio data to file at the correct position
+		fs.open(filePath, 'a', (err, fd) => {
+			if (err) return;
+			// Write at the byte position sent from client
+			fs.write(fd, bufferData, 0, bufferData.length, position, (err) => {
+				if (err) console.error(err);
+				fs.close(fd, () => {});
+			});
+		});
+		*/
+
+		// Remove buffering. 
 		//Check buffers initialised
+		/*
 		if(!buffers[message.room])
 		{
 			buffers[message.room] = {};
 		}
 		if(!buffers[message.room][socket.id])
 		{
-			buffers[message.room][socket.id] = [];
+			// If not created in the Join function, create a new buffer 20MB for the device.
+			buffers[message.room][socket.id] = Buffer.alloc(20 * 1024 * 1024);
 		}
-		//console.log("Audio data received, samples: "+samples+" ,position: "+position);
-		const bufferData = Buffer.from(message.audioData);
-		//const bufferData = new Float32Array(message.audioData);
-		fs.appendFile('./public/tmp/'+message.room+'/'+message.timedate+'_'+message.device+'BufferLog',
-			'Audio data position received: '+position+'\r',
-			function(err){
-				if(err) throw err;
-			});
 		insertDataAtPosition(buffers[message.room][socket.id],bufferData,position);
-		/*
-		writeFileAtPosition(filename, message.audioData, position, (err) => {
-			if (err) {
-			  console.error('Error writing to file:', err);
-			  socket.emit('error', 'Error writing to file');
-			} else {
-			  socket.emit('success', 'Data written successfully');
-			}
-		});
-		*/
-		/*
-		// Check if the file exists
-		fs.access(filename, fs.constants.F_OK, (err) => {
-			if (err) {
-			// File doesn't exist, create it
-			fs.writeFile(filename, '', (err) => {
-				if (err) {
-				//console.error('Error creating file:', err);
-				} else {
-				//console.log('File created successfully');
-				}
-			});
-			} else {
-			// File exists
-			//console.log('File already exists');
-			if(!isNaN(position))
-			{
-				//
-				
-				//
-				writeDataToPosition(filename, position, message.audioData);
-			}
-			}
-		}); 
-		*/
-		/*
-		if(!isNaN(position))
-		{
-			writeDataToPosition(filename, position, message.audioData);
-		}
 		*/
 	});
 
@@ -400,146 +400,187 @@ io.on('connection', socket => {
 		{
 			// Retrieve list of devices in the room
 			const clientsInRoom = io.sockets.adapter.rooms.get(message.room);
-			//console.log(clientsInRoom);
-			const deviceList = [];
-			if (clientsInRoom) {
-				clientsInRoom.forEach(clientId => {
-				  //const clientSocket = io.sockets.sockets.get(clientId);
-				  //deviceList.push(clientSocket.deviceId);
-				  deviceList.push(clientId);
-				});
-			}
-			//console.log(deviceList);
-			// Flush buffers to file for each device in the room
-			i = 1;
-			if (message.calibrating == 1) j = 1;
-			else j = 0;
-			deviceList.forEach(deviceId => {
-				flushBufferToFile(message.room, deviceId, message.timedate, i, j, (err) => {
-				if (err) {
-					console.error(`Error flushing buffer to file for device ${deviceId} in room ${roomId}:`, err);
-				} else {
-					console.log(`Buffer flushed to file for device ${deviceId} in room ${message.room}`);
+			if (!clientsInRoom) return;
+
+			const deviceList = Array.from(clientsInRoom);
+    		const roomDir = path.join(__dirname, `./public/tmp/${message.room}`);
+
+			// Audio stream snapshot paths to pass to Detection.py
+    		const snapshotPaths = [];
+
+			deviceList.forEach((deviceId, index) => {
+				const devNum = index + 1;
+				const sourceFile = path.join(roomDir, `${message.timedate}_${devNum}.pcm`);
+				const snapshotFile = path.join(roomDir, `${message.timedate}_${devNum}_snapshot.pcm`);
+				if (fs.existsSync(sourceFile)) {
+					// Copy to same directory with a new suffix
+					fs.copyFileSync(sourceFile, snapshotFile);
+					snapshotPaths.push(snapshotFile);
 				}
-				});
-				i = i + 1;
 			});
+
 			//Run python script to determine synchronisation of audio channels
-			var scriptArgs = [];
-			// Added in for calibration file.
-			scriptArgs.push(message.room)
-			scriptArgs.push('./public/tmp/'+message.room+'/'+message.timedate);
-			for (let i = 1; i <= message.devinarray; i++)
-			{
-				scriptArgs.push('./public/tmp/'+message.room+'/'+message.timedate+'_'+i+'_temp.pcm');
-			}
-			let options = {
-				mode: 'text',
-				pythonOptions: ['-u'], // get print results in real-time
-				args: scriptArgs
-			};
-			// Create a new PythonShell instance
-			//let pyshell = new PythonShell('./ReadAudio.py', options);
-			let pyshell = new PythonShell('./Detection.py', options);
-
-			// Capture messages from the Python script
-			pyshell.on('message', function (message) {
-				console.log('Python message:', message);
-			});
-
-			// Capture error messages from the Python script
-			pyshell.on('stderr', function (stderrMessage) {
-				console.error('Python stderr:', stderrMessage);
-			});
-
-			// Handle errors
-			pyshell.on('error', function (error) {
+			roomProcessingPromises[message.room] = new Promise((resolve, reject) => {
+				let scriptArgs = [message.room, path.join(roomDir, message.timedate)];
+				// Add the snapshot files as arguments for Python script
+        		snapshotPaths.forEach(p => scriptArgs.push(p));
+				
+				let options = {
+					mode: 'text',
+					pythonOptions: ['-u'], // get print results in real-time
+					args: scriptArgs
+				};
+				// Create a new PythonShell instance
+				let pyshell = new PythonShell('./Detection.py', options);
+				// Capture messages from the Python script
+				pyshell.on('message', function (message) {
+					console.log('Python message:', message);
+				});
+				// Capture error messages from the Python script
+				pyshell.on('stderr', function (stderrMessage) {
+					console.error('Python stderr:', stderrMessage);
+				});
+				// Handle when the script finishes
+				pyshell.on('close', function () {
+					console.log('Python script finished.');
+					io.to(message.master).emit('distanceRecord', {
+						timedate: message.timedate,
+						command: 'ReadyForSync',
+						room: message.room,
+						master: message.master,
+						calibrating: message.calibrating
+					});
+					resolve();
+				});
+				// Handle errors
+				pyshell.on('error', function (error) {
 				console.error('Python error:', error);
-			});
-
-			// Handle when the script finishes
-			pyshell.on('close', function () {
-				console.log('Python script finished.');
-				io.to(message.master).emit('distanceRecord', {
-					timedate: message.timedate,
-					command: 'ReadyForSync',
-					room: message.room,
-					master: message.master,
-					calibrating: message.calibrating
 				});
 			});
 		}
 		else if(message.command == 'SyncAudio')
 		{	
+
 			// Retrieve list of devices in the room
 			const clientsInRoom = io.sockets.adapter.rooms.get(message.room);
-			//console.log(clientsInRoom);
-			const deviceList = [];
-			if (clientsInRoom) {
-				clientsInRoom.forEach(clientId => {
-				  //const clientSocket = io.sockets.sockets.get(clientId);
-				  //deviceList.push(clientSocket.deviceId);
-				  deviceList.push(clientId);
-				});
-			}
-			//console.log(deviceList);
-			// Flush buffers to file for each device in the room
-			i = 1;
-			deviceList.forEach(deviceId => {
-				flushBufferToFile(message.room, deviceId, message.timedate, i, 1, (err) => {
-				if (err) {
-					console.error(`Error flushing buffer to file for device ${deviceId} in room ${roomId}:`, err);
-				} else {
-					console.log(`Buffer flushed to file for device ${deviceId} in room ${message.room}`);
-				}
-				});
-				i = i + 1;
-			});
+			if (!clientsInRoom) return;
+
+			const deviceList = Array.from(clientsInRoom);
+    		const roomDir = path.join(__dirname, `./public/tmp/${message.room}`);
+			
+
 			//Run python script to synchronise audio channels
 			//Run python script to determine synchronisation of audio channels
-			
-			var scriptArgs = [];
-			scriptArgs.push(message.room)
-			scriptArgs.push('./public/tmp/'+message.room+'/'+message.timedate+'_sync');
-			for (let i = 1; i <= message.devices; i++)
-			{
-				scriptArgs.push('./public/tmp/'+message.room+'/'+message.timedate+'_'+i+'.pcm');
-			}
-			let options = {
-				mode: 'text',
-				pythonOptions: ['-u'], // get print results in real-time
-				args: scriptArgs,
-			  };
-			
-			const pythonScript = 'SyncAudio.py';
-			const pyshell = new PythonShell(pythonScript, options);
-			// Capture messages from the Python script
-			pyshell.on('message', function (message) {
-				console.log('Python message:', message);
-			});
-
-			// Capture error messages from the Python script
-			pyshell.on('stderr', function (stderrMessage) {
-				console.error('Python stderr:', stderrMessage);
-			});
-
-			// Handle errors
-			pyshell.on('error', function (error) {
-				console.error('Python error:', error);
-			});
-
-			// Handle when the script finishes
-			pyshell.on('close', function () {
-				const audioFile = './tmp/'+message.room+'/'+message.timedate+'_sync.zip';
-				io.to(message.master).emit('distanceRecord',
+			const runSyncAudioScript = () => {
+				var scriptArgs = [];
+				scriptArgs.push(message.room)
+				scriptArgs.push(path.join(__dirname, 'public', 'tmp', message.room, `${message.timedate}_sync`));
+				for (let i = 1; i <= message.devices; i++)
 				{
-					timedate: message.timedate,
-					command: 'ReadyForDownload',
-					room: message.room,
-					master: message.master,
-					file: audioFile
+					const finalPcmFile = path.join(__dirname, 'public', 'tmp', message.room, `${message.timedate}_${i}.pcm`);
+					scriptArgs.push(finalPcmFile);
+				}
+				let options = {
+					mode: 'text',
+					pythonOptions: ['-u'], // get print results in real-time
+					args: scriptArgs,
+				};
+				
+				const pythonScript = 'SyncAudio.py';
+				const pyshell = new PythonShell(pythonScript, options);
+				// Capture messages from the Python script
+				pyshell.on('message', function (message) {
+					console.log('Python message:', message);
 				});
-			});
+
+				// Capture error messages from the Python script
+				pyshell.on('stderr', function (stderrMessage) {
+					console.error('Python stderr:', stderrMessage);
+				});
+
+				// Handle errors
+				pyshell.on('error', function (error) {
+					console.error('Python error:', error);
+				});
+
+				// Handle when the script finishes
+				pyshell.on('close', function () {
+					console.log('Python script finished. Preparing download link.');
+					//Absolute path of zip file to check existance
+					const zipFileName = `${message.timedate}_sync.zip`;
+					const absoluteZipPath = path.join(__dirname, 'public','tmp',message.room,zipFileName);
+					// Verification loop to check if the zip file exists and had been released.
+					let attempts = 0;
+					const maxAttempts = 10;
+					const retryDelay = 500; //ms
+					const checkFileAndSendLink = () => {
+						fs.access(absoluteZipPath, fs.constants.F_OK, (err) => {
+							if(!err) {
+								// File exists, proceed to send the link
+								console.log(`File found on attempt ${attempts + 1}. Sending download link.`);
+								const fileUrlPath = `${message.room}/${zipFileName}`;
+								const fullDownloadUrl = local_deploy
+									? `https://${getLocalIpAddress()}:${PORT}/downloads/${fileUrlPath}`
+									: `https://${Server_URL}/downloads/${fileUrlPath}`;
+								console.log(`Sending 'DownloadReady' to master. URL: ${fullDownloadUrl}`);
+								// --- FIX 1: SEND THE CORRECT EVENT ---
+								// The client is expecting "DownloadReady", not "distanceRecord".
+								io.to(message.master).emit('DownloadReady', {
+									timedate: message.timedate, // Used as part of the filename on the client
+									downloadLink: fullDownloadUrl, // The key the client expects
+								});
+								// Clean up the promise tracker
+								delete roomProcessingPromises[message.room];
+							} else if (attempts < maxAttempts) {
+								// File doesn't exist yet, retry after a delay
+								attempts++;
+								console.log(`File not found, retrying... (Attempt ${attempts}/${maxAttempts})`);
+								setTimeout(checkFileAndSendLink, retryDelay);
+							} else {
+								// Max attempts reached, file never appeared.
+								console.error(`Gave up waiting for file: ${absoluteZipPath}. It never appeared.`);
+								// --- FIX 2: NOTIFY THE CLIENT OF THE FAILURE ---
+								io.to(message.master).emit('customError', {
+									message: `Processing failed: The server could not create the download file for ${zipFileName}.`
+								});
+								// Clean up the promise tracker
+								delete roomProcessingPromises[message.room];
+							}
+						});
+					}
+					if(!local_deploy) // If clousd deployment, start client download process.
+					{
+						checkFileAndSendLink();
+					}
+					else //Local deployment, send a message.
+					{
+						io.to(message.master).emit('distanceRecord',{
+							timedate: message.timedate,
+							command: 'SyncFinished',
+							devinarray: message.devinarray,
+							room: message.room,
+							master: message.master
+						});
+					}
+				});
+			};
+
+			// Check if the sync process for the room is complete
+			if (roomProcessingPromises[message.room]) {
+			console.log(`SyncAudio received for ${message.room}, but Detection is still running. Queuing...`);
+			
+			// Wait for the stored Promise to resolve, then run the next script
+			roomProcessingPromises[message.room]
+				.then(() => runSyncAudioScript())
+				.catch(() => {
+					console.error("Detection failed; not running SyncAudio.");
+					delete roomProcessingPromises[message.room];
+				});
+			} else {
+				// Detection is not running (or already finished), run immediately
+				runSyncAudioScript();
+			}
+
 			/*
 			// Optional: Handle script termination
 			pyshell.end((err, code, signal) => {
@@ -562,6 +603,11 @@ io.on('connection', socket => {
 				// Commands to send download links to master device
 			});
 			*/
+		}
+		else if(message.command == 'download')
+		{
+			// Commands to send download links to master device
+			
 		}
 	});
 	
@@ -681,5 +727,58 @@ function flushBufferToFile(roomId, deviceId, datestamp, devnum, clear, callback)
 	});
 }
 
-server.listen(PORT);
-console.log(`Server running on ${PORT}`);
+function getLocalIpAddress() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            // Skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
+    }
+    return '0.0.0.0'; // Fallback
+}
+
+function deleteRoomFolder(roomId) {
+    const folderPath = path.join(__dirname, 'public', 'tmp', roomId);
+    fs.rm(folderPath, { recursive: true, force: true }, (err) => {
+        if (err) {
+            console.error(`❗️ Failed to delete folder ${folderPath}:`, err);
+        } else {
+            console.log(`🗑️ Deleted folder for room ${roomId}`);
+        }
+    });
+}
+
+function writeToPcmFile(filepath, data, position) {
+    // Check if file exists; if not, create it.
+    if (!fs.existsSync(filepath)) {
+        fs.writeFileSync(filepath, ""); 
+    }
+    fs.open(filepath, 'r+', (err, fd) => {
+        if (err) return console.error("File open error:", err);   
+        // Write the audio chunk at the exact byte position
+        fs.write(fd, data, 0, data.length, position, (writeErr) => {
+            if (writeErr) console.error("Write error:", writeErr);
+            fs.close(fd, () => {});
+        });
+    });
+}
+
+server.listen(PORT, () => {
+    console.log(`Server running on port: ${PORT}`);
+    if (local_deploy) {
+        const localIp = getLocalIpAddress();
+        console.log('----------------------------------------------------');
+        console.log('Server is in LOCAL mode.');
+        console.log(`Connect your Android client to: https://${localIp}:${PORT}`);
+        console.log('----------------------------------------------------');
+    } else {
+		const localIp = getLocalIpAddress();
+        console.log('----------------------------------------------------');
+        console.log('Server is in REMOTE mode.');
+        console.log(`Connect your Android client to: https://${Server_URL}:${PORT} or https://${localIp}:${PORT}`);
+        console.log('----------------------------------------------------');
+    }
+});

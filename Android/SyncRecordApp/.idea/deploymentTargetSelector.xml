@@ -8,17 +8,12 @@
           <targets>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="PhysicalDevice" identifier="serial=eff5ca23" />
+                <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\padra\.android\avd\Galaxy_API_30.avd" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="PhysicalDevice" identifier="serial=e6e45247" />
-              </handle>
-            </Target>
-            <Target type="DEFAULT_BOOT">
-              <handle>
-                <DeviceId pluginId="PhysicalDevice" identifier="serial=7e128c83" />
+                <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\padra\.android\avd\Galaxy_API_30_1.avd" />
               </handle>
             </Target>
           </targets>

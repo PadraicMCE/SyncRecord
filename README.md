@@ -16,19 +16,20 @@ Result:
 
 - Sub‑millisecond audio stream temporal alignment (≈ 5 samples at 48 kHz)
 - Estimation of the relative geometric positions of the devices. (purely from audio)
-- Transient‑only data handling – no audio is stored permanently on the server
+- Cloud-hosted: Transient‑only data handling – no audio is stored permanently on the server.
 
 ---
 
 ## Features
-- Multi‑device synchronized audio recording on Android 10+ devices (requires `MediaRecorder.AudioSource.UNPROCESSED`)
+- Multi‑device synchronised audio recording on Android 10+ devices (requires `MediaRecorder.AudioSource.UNPROCESSED`)
 - Three operating modes
-1. **Regular Recording** - Continuous streams, no localisation.
-2. **Localise Array** - Used to only compute distances between devices.
-3. **Synchronised Reocrding** - Combines localisation and continuous recording to synchronise auto streams.
+1. **Synchronised Reocrding** - Combines localisation and continuous recording to synchronise auto streams.
+2. **Localise Array Devices** - Used to only compute distances between devices.
+3. **Unsynchronised Recording** - Continuous streams, no localisation.
+
 - Sub‑millisecond alignment – ≈ 5 samples at 48 kHz (≈ 100 µs).
 - Server can run **locally** (LAN) or on a **cloud** instance (HTTPS + TLS).
-- All data are transient – audio is deleted after the session ends.
+- When cloud-hosted all data are transient – audio is deleted after the session ends.
 - Open‑source, MIT‑licensed, fully extensible (Kotlin client, Node.js + Python backend).
 - MIT Licence - free for academic and commercial reuse.
 - DOI for citation.
@@ -46,10 +47,10 @@ SyncRecord consists of two main components:
 Android app handles audio capture, audible PRBS emission, UI, and websocket communication.
 
 ### 2. Server application (NodeJS / Python)
-Node.js orchestrates sessions, streams PCM packets, and called Python scripts.
+Node.js orchestrates sessions, stores audio stream PCM data, and calls Python scripts.
 
 ### 3. Python scripts
-Detection.py extracts pair-wisse delays and distances via cross-correlation.
+Detection.py extracts pair-wise delays and distances via cross-correlation.
 SyncAudio.py aligns streams and builds the final archive.
 
 ---
@@ -60,13 +61,24 @@ SyncAudio.py aligns streams and builds the final archive.
 - *Android SDK 31 (Android 10) - Device must support* `MediaRecorder.AudioSource.UNPROCESSED` *audio source*.
 - *Kotlin 1.8, Gradle 8.13 (wrapper included)*.
 - *Node.js (v18.19.1 used during development), npm - bundled with Node (9.2.0 used during development)*
-- *Python 3.12.3*
+- *Python 3.12.3* used during development
+
+---
+## Linux
 
 ### 1. Clone the repository
 ```bash
 git clone https://github.com/PadraicMCE/SyncRecord.git
 cd SyncRecord
 ```
+
+---
+## Windows
+
+### 1. Download and install nodeJS
+<a href="https://nodejs.org/en/download" target="_blank">https://nodejs.org/en/download</a>
+
+---
 ### 2. Install dependencies
 ```bash
 pip install -r requirements.txt
@@ -76,44 +88,78 @@ npm ci
 ```bash
 node server.js
 ```
-### 4. Install the SycnRecord
+For cloud deployment, change the `local_deploy` variable to False, before running the `server.js` script.
+
+### 4. Install the SyncRecord Android App
 Install the SyncRecord Android .apk on to the Android smartphones being used in the microphone array.
 
 ### 5. First-time configuration (client side)
 1. Launch the **SyncRecord** app on the device.
 2. Open the **Settings** (gear icon) -> **Socket Address**
 3. Enter the server address:
-    *For a local server:* `http://<your-PC_IP>:3000`
-	*FOr a cloud server:* `https://<your-domain>:3000`
+    *For a local server:* 
+    `http://<your-PC_IP>:3000`
+
+	*For a cloud server:* 
+    `https://<your-domain>:3000`
 4. Choose **Connection type** (`Local` or `Cloud`) to match the server you started.
 The client will now be able to join sessions hosted by that server.
 
 ### 6. Running a recording session
 Steps:
-1. On master device press `Create Array`. An array 4-character UID appears.
+1. On master device press `Create Array`. A 4-character array UID appears.
 2. On slave device(s) press `Join Array` and enter the UID shown on the master device, then press `Join`.
-3. On master, Choose one of three modes: `Regular Recording`, `Localise Array`, or `Synchronised Recording`.
+3. On master, Choose one of three modes: `Synchronised Recording`,`Unsynchronised Recording` or `Localise Array Devices`.
 4. The master can `Stop` the session when finished.
-5. After recording has stopped, the master receives a zip file containing audio streams and metadata.
+5. If cloud-hosted, after recording has stopped, the master receives a zip file containing audio streams and metadata.
+If locally-hosted, the files remain on the server in the `SyncRecord/tmp/<UID>` directory.
 
 ## Installation
 
-### Repository Layout
+### Server Directory Layout
 
-
-### 1. Server Setup
-
-### 2. Client Setup
+**Server:**  
+SyncRecord/  
+|  
+|- public/  
+|&nbsp;&nbsp;&nbsp;&nbsp;|- tmp/  
+|&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;| -`<UID>`  
+|- ssl/  
+|&nbsp;&nbsp;&nbsp;&nbsp;|- openssl/  
+|&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;|- privkey.pem  
+|&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;|- cert.pem  
+|&nbsp;&nbsp;&nbsp;&nbsp;|- cert.pem  
+|&nbsp;&nbsp;&nbsp;&nbsp;|- chain.pem  
+|&nbsp;&nbsp;&nbsp;&nbsp;|- fullchain.pem  
+|&nbsp;&nbsp;&nbsp;&nbsp;|- privkey.pem  
+|- server.js  
+|- Detection.py  
+|- SyncAudio.py  
+|- prbs1_template_delta.csv  
 
 ## Data Handling and Privacy
-- **No persistent storage** - After the master downloads the zip archive, the server discards all raw audio data.
+- **No persistent cloud storage** - When cloud-hosted, after the master downloads the zip archive and the session ends, the server discards all raw audio data.  
+When locally-hosted, the files remain on the server.
 - **Encryption** - The uses TLS certificates, and the websocket is encrypted end-to-end.
 - **No user accounts** - Arrays and sessions are identified only by the short UID; there is no login or personal data collected.
 
-## Example Use
+---
+## Test Data
+Recorded data is available in `<directory>` to test the signal processing scripts `Detection.py` and `SyncAudio.py`.
+To test `Detection.py` on a single set of audio recordings with ground truth distance information, run the following script within the root SyncRecord directory.
+
+```Bash
+python Detection.py ./public/test_data/ ./public/test_data/1751379318 ./public/test_data/1751379318_2.pcm ./public/test_data/1751379318_3.pcm ./public/test_data/1751379318_4.pcm
+```
+
+Distance information is needed to run the `SyncAudio.py` script. This data is available in the `./public/test_data` directory, and is over written when `Detection.py` is run. To test the `SyncAudio.py` script run the following script within the root `SyncRecord` directory.
+
+```Bash
+python SyncAudio.py ./public/test_data/ ./public/test_data/1751379318_sync ./public/test_data/1751379318_2.pcm ./public/test_data/1751379318_3.pcm ./public/test_data/1751379318_4.pcm
+```
 
 ## Citation
-if you use this software in your research, please cite:
+If you use SyncRecord in your research, please cite:
 
 ## License
 The **source code** in this repository is released under the **MIT License** - see the `License` file for full text.

@@ -439,7 +439,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             stoppedDevices[devInArray.toInt() - 1] = 1
             val allStopped = stoppedDevices.all { it == 1 }
             if (stoppedDevices.size == connectedDevices.size && allStopped) {
-                if (calibrating > 0) {
+                if (calibrating == 2) {
                     val sendData = JSONObject()
                     sendData.put("timedate", timedate)
                     sendData.put("command", "SyncAudio")
@@ -503,7 +503,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
                     val sendData = JSONObject()
                     sendData.put("timedate", timedate)
                     //sendData.put("command","Sync")
-                    sendData.put("command", "Stop")
+                    sendData.put("command", "Sync")
                     sendData.put("room", room)
                     sendData.put("master", datamaster)
                     sendData.put("calibrating", calibrating)

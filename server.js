@@ -88,26 +88,41 @@ io.on('connection', socket => {
 
 	socket.on('disconnect', function(message)
 	{
-		//Find every room the socket beloings to
-		const rooms = Array.from(socket.rooms).filter(r => r !== socket.id); // socket.id itself is also a “room”
-		//clean up buffers
-		for (const roomId in buffers) {
-			for (const deviceId in buffers[roomId]) {
-				delete buffers[roomId][deviceId];
-			}
-		}
-		rooms.forEach(roomId => {
-			const masterId = roomMaster.get(roomId);
-			if (masterId === socket.id) {
-				// This socket *was* the master → delete the folder
-				console.log(`Master ${socket.id} left room ${roomId}. Cleaning up.`);
-				if(!local_deploy) {
-					deleteRoomFolder(roomId);
+		// If the server is cloud-hosted. When devices leave the mic array - remove the directory.
+		if(!local_deploy)
+		{
+			// Find every room the socket belongs to
+			const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
+			// Clean up buffers for this device
+			for (const roomId in buffers) {
+				if (buffers[roomId] && buffers[roomId][socket.id]) {
+					delete buffers[roomId][socket.id];
 				}
-				// Remove the entry from the map so a new master can be elected later
-				roomMaster.delete(roomId);
 			}
-		});
+			rooms.forEach(roomId => {
+				const masterId = roomMaster.get(roomId);
+				// If this socket was the master, remove the master entry
+				if (masterId === socket.id) {
+					console.log(`Master ${socket.id} left room ${roomId}.`);
+					roomMaster.delete(roomId);
+				}
+				// Check if anyone is still in the room
+				const clientsInRoom = io.sockets.adapter.rooms.get(roomId);
+				const occupantCount = clientsInRoom ? clientsInRoom.size : 0;
+				if (occupantCount === 0) {
+					// All devices have left — clean up
+					console.log(`Room ${roomId} is empty. Deleting folder.`);
+					if (!local_deploy) {
+						deleteRoomFolder(roomId);
+					}
+					// Also clean up the buffers map for this room
+					delete buffers[roomId];
+					// Clean up any pending processing promises
+					delete roomProcessingPromises[roomId];
+				}
+			});
+		}
+		// If the server is hosted locally, all data remains in the directories. The server admin needs to download/remove these
 	});
 
     socket.on('joinRoom', function(message)
@@ -411,7 +426,58 @@ io.on('connection', socket => {
 						master: message.master,
 						calibrating: message.calibrating
 					});
+					if(message.calibrating == 1)
+					{
+						// If localising mic array with no audio recording.
+						if(!local_deploy)
+						{
+							// If cloud-hosted, send the download file.
+							const checkFileAndSendLink = () => {
+								fs.access(absoluteZipPath, fs.constants.F_OK, (err) => {
+									if(!err) {
+										// File exists, proceed to send the link
+										console.log(`File found on attempt ${attempts + 1}. Sending download link.`);
+										const fileUrlPath = `${message.room}/${message.timedate}_sync`;
+										const fullDownloadUrl = local_deploy
+											? `https://${getLocalIpAddress()}:${PORT}/tmp/${fileUrlPath}`
+											: `https://${Server_URL}:${PORT}/tmp/${fileUrlPath}`;
+										console.log(`Sending 'DownloadReady' to master. URL: ${fullDownloadUrl}`);
+										// --- SEND THE EVENT ---
+										io.to(message.master).emit('DownloadReady', {
+											timedate: message.timedate, // Used as part of the filename on the client
+											downloadLink: fullDownloadUrl, // The key the client expects
+										});
+										// Clean up the promise tracker
+										delete roomProcessingPromises[message.room];
+									} else if (attempts < maxAttempts) {
+										// File doesn't exist yet, retry after a delay
+										attempts++;
+										console.log(`File not found, retrying... (Attempt ${attempts}/${maxAttempts})`);
+										setTimeout(checkFileAndSendLink, retryDelay);
+									} else {
+										// Max attempts reached, file never appeared.
+										console.error(`Gave up waiting for file: ${absoluteZipPath}. It never appeared.`);
+										// --- NOTIFY THE CLIENT OF THE FAILURE ---
+										io.to(message.master).emit('customError', {
+											message: `Processing failed: The server could not create the download file for ${zipFileName}.`
+										});
+										// Clean up the promise tracker
+										delete roomProcessingPromises[message.room];
+									}
+								});
+							}
+							checkFileAndSendLink();
+						}
+						// If hosted locally, the file remains in the directory.
+					}
 					resolve();
+					io.to(message.room).emit('distanceRecord',{
+						timedate: message.timedate,
+						command: message.command,
+						room: message.room,
+						master: message.master,
+						calibrating: message.calibrating
+					});
 				});
 				// Handle errors
 				pyshell.on('error', function (error) {

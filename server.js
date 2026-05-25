@@ -86,43 +86,40 @@ const io = socketio(server);
 io.on('connection', socket => {
     socket.emit('message', 'Welcome to server');
 
-	socket.on('disconnect', function(message)
-	{
-		// If the server is cloud-hosted. When devices leave the mic array - remove the directory.
-		if(!local_deploy)
-		{
-			// Find every room the socket belongs to
-			const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
-			// Clean up buffers for this device
-			for (const roomId in buffers) {
-				if (buffers[roomId] && buffers[roomId][socket.id]) {
-					delete buffers[roomId][socket.id];
-				}
-			}
-			rooms.forEach(roomId => {
-				const masterId = roomMaster.get(roomId);
-				// If this socket was the master, remove the master entry
-				if (masterId === socket.id) {
-					console.log(`Master ${socket.id} left room ${roomId}.`);
-					roomMaster.delete(roomId);
-				}
-				// Check if anyone is still in the room
-				const clientsInRoom = io.sockets.adapter.rooms.get(roomId);
-				const occupantCount = clientsInRoom ? clientsInRoom.size : 0;
-				if (occupantCount === 0) {
-					// All devices have left — clean up
-					console.log(`Room ${roomId} is empty. Deleting folder.`);
-					if (!local_deploy) {
-						deleteRoomFolder(roomId);
-					}
-					// Also clean up the buffers map for this room
+	socket.on('disconnect', function(message) {
+		console.log(`Socket ${socket.id} disconnected.`);
+		// Check if this socket was the master of any room
+		// Iterate through roomMaster map to find matches
+		for (const [roomId, masterId] of roomMaster.entries()) {
+			if (masterId === socket.id) {
+				console.log(`Master ${socket.id} left room ${roomId}. Triggering cleanup.`);
+				// Remove the master entry from the map
+				roomMaster.delete(roomId);
+				// Clean up buffers for all devices in this room
+				if (buffers[roomId]) {
+					console.log(`Clearing buffers for room ${roomId}...`);
 					delete buffers[roomId];
-					// Clean up any pending processing promises
+				}
+				// Clean up any pending processing promises
+				if (roomProcessingPromises[roomId]) {
+					console.log(`Cancelling pending processing for room ${roomId}...`);
 					delete roomProcessingPromises[roomId];
 				}
-			});
+				// Delete the directory
+				if (!local_deploy) {
+					deleteRoomFolder(roomId);
+				} else {
+					console.log(`[Local Mode] Skipping folder deletion for room ${roomId}.`);
+				}
+			}
 		}
-		// If the server is hosted locally, all data remains in the directories. The server admin needs to download/remove these
+		// Clean up buffers for this specific socket in any room (In case slave device disconnects)
+		for (const roomId in buffers) {
+			if (buffers[roomId] && buffers[roomId][socket.id]) {
+				delete buffers[roomId][socket.id];
+				console.log(`Cleaned up buffer for slave device ${socket.id} in room ${roomId}`);
+			}
+		}
 	});
 
     socket.on('joinRoom', function(message)
@@ -430,13 +427,13 @@ io.on('connection', socket => {
 					{
 						// If localising mic array with no audio recording.
 						if(!local_deploy)
-						{
+						{	const zipFileName = `${message.timedate}_sync.zip`;
+							const absoluteZipPath = path.join(__dirname, 'public','tmp',message.room,message.timedate+'_sync');
 							// If cloud-hosted, send the download file.
 							const checkFileAndSendLink = () => {
 								fs.access(absoluteZipPath, fs.constants.F_OK, (err) => {
 									if(!err) {
 										// File exists, proceed to send the link
-										console.log(`File found on attempt ${attempts + 1}. Sending download link.`);
 										const fileUrlPath = `${message.room}/${message.timedate}_sync`;
 										const fullDownloadUrl = local_deploy
 											? `https://${getLocalIpAddress()}:${PORT}/tmp/${fileUrlPath}`

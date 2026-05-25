@@ -6,7 +6,7 @@
 **** Settings for cloud/local deployment ****
 ********************************** */
 // Set to true for local deployment/testing
-const local_deploy = false; //false;
+const local_deploy = True; // True: Local deploy; False: Cloud deploy.
 // CLoud server URL for downloads
 const Server_URL = 'syncrecord.eu';
 // https:// does not need to be included here.

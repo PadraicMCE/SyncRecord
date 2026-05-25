@@ -9,25 +9,26 @@
 **SyncRecord** is an open‑source Android application that turns a group of smartphones into a synchronised microphone array. 
 By transforming grouped mobile devices into ad hoc microphone arrays, SyncRecord supports distributed acoustic sensing, sound source localisation, and multi-device audio acquisition.
 
-The system employs audible pseudo-random binary sequences (PRBS) and cross-correlation analysis to estimate inter-device propagation delays and achieve sub-millisecond synchronisation accuracy (approximately four samples at 48 kHz).  
-Using only the recorded audio, SyncRecord can also infer the relative positions of participating devices.
+The system employs audible pseudo-random binary sequences (PRBS) and cross-correlation analysis to estimate inter-device propagation delays and achieve sub-millisecond synchronisation accuracy (Testing shows a mean of 2 samples at 48 kHz = 42 µs).  
+Using only the recorded audio, and inter-device distances provided by SyncRecord you can also infer the relative positions of participating devices.
 
 Result:
 
-- Sub‑millisecond audio stream temporal alignment (≈ 5 samples at 48 kHz)
+- Sub‑millisecond audio stream temporal alignment (≈ 2 samples at 48 kHz)
 - Estimation of the relative geometric positions of the devices. (purely from audio)
-- Cloud-hosted: Transient‑only data handling – no audio is stored permanently on the server.
+- Cloud-hosted option: Transient‑only data handling – no audio is stored permanently on the server.
+- Locally-hosted option: Easier customisation and data access.
 
 ---
 
 ## Features
-- Multi‑device synchronised audio recording on Android 10+ devices (requires `MediaRecorder.AudioSource.UNPROCESSED`)
+- Multi‑device synchronised audio recording on Android 10+ devices (requires `MediaRecorder.AudioSource.UNPROCESSED` support)
 - Three operating modes
 1. **Synchronised Reocrding** - Combines localisation and continuous recording to synchronise auto streams.
 2. **Localise Array Devices** - Used to only compute distances between devices.
 3. **Unsynchronised Recording** - Continuous streams, no localisation.
 
-- Sub‑millisecond alignment – ≈ 5 samples at 48 kHz (≈ 100 µs).
+- Sub‑millisecond alignment – ≈ 2 samples at 48 kHz (≈ 42 µs).
 - Server can run **locally** (LAN) or on a **cloud** instance (HTTPS + TLS).
 - When cloud-hosted all data are transient – audio is deleted after the session ends.
 - Open‑source, MIT‑licensed, fully extensible (Kotlin client, Node.js + Python backend).
@@ -43,7 +44,7 @@ Useful for:
 
 ## System Architecture
 SyncRecord consists of two main components:
-### 1. Client Applications (Android)
+### 1. Client Application (Android)
 Android app handles audio capture, audible PRBS emission, UI, and websocket communication.
 
 ### 2. Server application (NodeJS / Python)
@@ -65,35 +66,48 @@ SyncAudio.py aligns streams and builds the final archive.
 
 ---
 ## Linux
+### 1. Download and install NodeJS
+```bash
+sudo apt update
+sudo apt upgrade
+sudo apt install nodejs
+sudo apt install npm
+```
 
-### 1. Clone the repository
+## Windows
+
+### 1. Download and install NodeJS
+<a href="https://nodejs.org/en/download" target="_blank">https://nodejs.org/en/download</a>
+
+
+## MacOS
+
+Installing NodeJS on MacOS and following steps 2 -> 7 should work. But it has not been tested.
+
+---
+---
+### 2. Clone the repository
 ```bash
 git clone https://github.com/PadraicMCE/SyncRecord.git
 cd SyncRecord
 ```
 
 ---
-## Windows
-
-### 1. Download and install nodeJS
-<a href="https://nodejs.org/en/download" target="_blank">https://nodejs.org/en/download</a>
-
----
-### 2. Install dependencies
+### 3. Install dependencies
 ```bash
 pip install -r requirements.txt
 npm ci
 ```
-### 3. Run the server
+### 4. Run the server
 ```bash
 node server.js
 ```
 For cloud deployment, change the `local_deploy` variable to False, before running the `server.js` script.
 
-### 4. Install the SyncRecord Android App
+### 5. Install the SyncRecord Android App
 Install the SyncRecord Android .apk on to the Android smartphones being used in the microphone array.
 
-### 5. First-time configuration (client side)
+### 6. First-time configuration (client side)
 1. Launch the **SyncRecord** app on the device.
 2. Open the **Settings** (gear icon) -> **Socket Address**
 3. Enter the server address:
@@ -105,12 +119,12 @@ Install the SyncRecord Android .apk on to the Android smartphones being used in 
 4. Choose **Connection type** (`Local` or `Cloud`) to match the server you started.
 The client will now be able to join sessions hosted by that server.
 
-### 6. Running a recording session
+### 7. Running a recording session
 Steps:
 1. On master device press `Create Array`. A 4-character array UID appears.
 2. On slave device(s) press `Join Array` and enter the UID shown on the master device, then press `Join`.
 3. On master, Choose one of three modes: `Synchronised Recording`,`Unsynchronised Recording` or `Localise Array Devices`.
-4. The master can `Stop` the session when finished.
+4. In `Syncronised Recording` and `Unsynchronised Recording`modes, the master can `Stop` the recording session when finished. In `Localise Array Devices` mode, the the localisation steps complete automatically.
 5. If cloud-hosted, after recording has stopped, the master receives a zip file containing audio streams and metadata.
 If locally-hosted, the files remain on the server in the `SyncRecord/tmp/<UID>` directory.
 
@@ -123,6 +137,8 @@ SyncRecord/
 |  
 |- public/  
 |&nbsp;&nbsp;&nbsp;&nbsp;|- tmp/  
+|&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;| -`<UID>`  
+|&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;| -`<UID>`  
 |&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;| -`<UID>`  
 |- ssl/  
 |&nbsp;&nbsp;&nbsp;&nbsp;|- openssl/  
@@ -137,6 +153,8 @@ SyncRecord/
 |- SyncAudio.py  
 |- prbs1_template_delta.csv  
 
+The repo comes with a self-signed ssl certificate for locally-hosting the server. It is the users responsibility to ensure network security. For cloud deployment, the user needs to provide their own ssl certificate, stored in `SyncRecord/ssl/.`.
+
 ## Data Handling and Privacy
 - **No persistent cloud storage** - When cloud-hosted, after the master downloads the zip archive and the session ends, the server discards all raw audio data.  
 When locally-hosted, the files remain on the server.
@@ -145,8 +163,8 @@ When locally-hosted, the files remain on the server.
 
 ---
 ## Test Data
-Recorded data is available in `<directory>` to test the signal processing scripts `Detection.py` and `SyncAudio.py`.
-To test `Detection.py` on a single set of audio recordings with ground truth distance information, run the following script within the root SyncRecord directory.
+Recorded data is available in `SyncRecord/public/test_data` to test the signal processing scripts `Detection.py` and `SyncAudio.py`.
+To test `Detection.py` on a single set of audio recordings with ground truth distance information, run the following script within the root `SyncRecord` directory.
 
 ```Bash
 python Detection.py ./public/test_data/ ./public/test_data/1751379318 ./public/test_data/1751379318_2.pcm ./public/test_data/1751379318_3.pcm ./public/test_data/1751379318_4.pcm
@@ -159,12 +177,13 @@ python SyncAudio.py ./public/test_data/ ./public/test_data/1751379318_sync ./pub
 ```
 
 ## Citation
-If you use SyncRecord in your research, please cite:
+If you use SyncRecord in your research, please use the citation file included in this repo:
+
 
 ## License
-The **source code** in this repository is released under the **MIT License** - see the `License` file for full text.
+The **source code** in this repository is released under the **MIT License**.
 
 The **paper** that describes SyncRecord is licensed under **Creative Commons Attribution 4.0 International (CC-BY 4.0)** as required by the *Journal of Open Research Software*.
 
-
+A Preprint of the paper is available at: https://doi.org/10.5281/zenodo.20381907
 

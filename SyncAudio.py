@@ -73,14 +73,8 @@ device_list = sorted(all_devices)
 peak_types = sorted(all_peak_types)
 num_devices = len(device_list)
 
-print(f"Devices: {device_list}")
-print(f"peaks: {peak_types}")
-print(f"Shifts: {shifts}")
-
+# Device used as the global reference
 reference_device = 1
-
-print(f"shift 1 2: {shifts[1][2]}")
-print(f"shift 1 3: {shifts[1][3]}")
 
 # Synchronised audio streams   
 syncAudio = {}

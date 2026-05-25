@@ -1,0 +1,116 @@
+r1: (700, 1980)
+b1: (638, 1770)
+r2: (2618, 896)
+b2: (2434, 1018)
+r3: (2504, 3098)
+b3: (2608, 3292)
+d12: 1141.1846914500738
+d13: 1040.7432440328403
+d23: 1081.1142400320143
+alpha: 73.55139187296018
+beta: -33.54610858390778
+gamma: -118.19497906246217
+m1: (689.44, 2028.99)
+s1: (750.82, 2010.87)
+m2: (2667.93, 891.69)
+s2: (2632.57, 838.3499999999999)
+m3: (2504.36, 3047.88)
+s3: (2447.96, 3078.12)
+ -- Estimated Distances -- 
+distance_1_2: 1080.007089829697
+distance_1_3: 1005.7629465745326
+distance_2_3: 1087.430123757928
+
+Theta_m1_s2: 105.05 deg
+Theta_m1_s3: 42.73 deg
+Theta_m2_s1: 176.73 deg
+Theta_m2_s3: 129.29 deg
+Theta_m3_s1: 31.21 deg
+Theta_m3_s2: 31.52 deg
+Theta_rad_m1_s2: 1.83
+Theta_rad_m1_s3: 0.75
+Theta_rad_m2_s1: 3.08
+Theta_rad_m2_s3: 2.26
+Theta_rad_m3_s1: 0.54
+Theta_rad_m3_s2: 0.55
+
+--- Audio Amplitude Analysis Results ---
+
+Mean Peak Amplitudes:
+Device 1 from Device 1: 0.199493
+Device 1 from Device 2: 0.003980
+Device 1 from Device 3: 0.012953
+Device 2 from Device 1: 0.004667
+Device 2 from Device 2: 0.192108
+Device 2 from Device 3: 0.010760
+Device 3 from Device 1: 0.012533
+Device 3 from Device 2: 0.007037
+Device 3 from Device 3: 0.179660
+
+RMS Peak Amplitudes:
+Device 1 from Device 1: 0.283044
+Device 1 from Device 2: 0.005292
+Device 1 from Device 3: 0.019249
+Device 2 from Device 1: 0.006298
+Device 2 from Device 2: 0.269743
+Device 2 from Device 3: 0.015248
+Device 3 from Device 1: 0.018155
+Device 3 from Device 2: 0.009687
+Device 3 from Device 3: 0.253260
+
+Power Peak Amplitudes:
+Device 1 from Device 1: 0.080114
+Device 1 from Device 2: 0.000028
+Device 1 from Device 3: 0.000371
+Device 2 from Device 1: 0.000040
+Device 2 from Device 2: 0.072761
+Device 2 from Device 3: 0.000232
+Device 3 from Device 1: 0.000330
+Device 3 from Device 2: 0.000094
+Device 3 from Device 3: 0.064141
+
+SNRs:
+Device 1 from Device 1: 25.85 dBFS
+Device 1 from Device 2: -7.21 dBFS
+Device 1 from Device 3: 1.99 dBFS
+Device 2 from Device 1: -1.37 dBFS
+Device 2 from Device 2: 32.78 dBFS
+Device 2 from Device 3: 3.88 dBFS
+Device 3 from Device 1: 13.79 dBFS
+Device 3 from Device 2: 11.77 dBFS
+Device 3 from Device 3: 36.18 dBFS
+
+Full Audio Stream Amplitudes:
+Device 1: 0.044819
+Device 2: 0.040061
+Device 3: 0.038573
+
+Full Audio Stream Powers:
+Device 1: 0.002009
+Device 2: 0.001605
+Device 3: 0.001488
+
+Full Audio Stream SNRs:
+Device 1: 21.09 dBFS
+Device 2: 28.01 dBFS
+Device 3: 31.45 dBFS
+
+Full Audio Stream Mean Amplitudes:
+Device 1: 0.011368
+Device 2: 0.007281
+Device 3: 0.006711
+
+Audio Stream Amplitudes with Self Audio Removed:
+Device 1: 0.014238
+Device 2: 0.006207
+Device 3: 0.005305
+
+Audio Stream Powers with Self Audio Removed:
+Device 1: 0.000203
+Device 2: 0.000039
+Device 3: 0.000028
+
+Audio Stream Mean Amplitudes with Self Audio Removed:
+Device 1: 0.006870
+Device 2: 0.003145
+Device 3: 0.002622

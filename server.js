@@ -1,12 +1,12 @@
 /* ************************************
     Written by: Padraic McEvoy
-    Last updated 21/12/2023
+    Last updated 25/05/2026
 ************************************ */
 /* **********************************
 **** Settings for cloud/local deployment ****
 ********************************** */
 // Set to true for local deployment/testing
-const local_deploy = true; //false;
+const local_deploy = false; //false;
 // CLoud server URL for downloads
 const Server_URL = 'syncrecord.eu';
 // https:// does not need to be included here.
@@ -30,11 +30,7 @@ const {PythonShell} = require('python-shell');
 const WaveFile = require('wavefile').WaveFile;
 const multer = require('multer');
 const buffers = {};	//Buffers for audio data
-/*
-	PRocess tracker map. Checks what processes are running.
-*/
-//const activeProcessing = new Map();
-//const roomProcessingTasks = new Map();
+
 const roomProcessingPromises = new Map();
 // Map for masters of each array
 const roomMaster = new Map();   // roomId -> socket.id of the master
@@ -57,7 +53,6 @@ const { deserialize } = require('v8');
 const PORT = 3000 || process.env.PORT;
 
 const app = express();
-//const server = https.createServer(https_options, app);
 //Set static folder
 app.use(express.static('public', { 'extensions': ['html', 'js'], 'content-type': 'application/javascript' }));
 app.use('/build/', express.static(path.join(__dirname, 'node_modules/three/build')));
@@ -90,13 +85,6 @@ const io = socketio(server);
 
 io.on('connection', socket => {
     socket.emit('message', 'Welcome to server');
-
-	// Log every socket message received
-	/*
-    socket.onAny((event, ...args) => {
-        console.log(`Received event: ${event}, with data:`, args);
-    });
-	*/
 
 	socket.on('disconnect', function(message)
 	{
@@ -145,6 +133,7 @@ io.on('connection', socket => {
 		if(!buffers[room][id])
 		{
 			// Allocate 20MB per device stream. (Approx 3.5 minutes of audio at 48kHz 16-bit mono)
+			// The audio stream is written directly to a file, so this shouldn't be needed.
 			buffers[room][id] = Buffer.alloc(20 * 1024 * 1024); // 20MB buffer
 		}
 	});
@@ -173,41 +162,11 @@ io.on('connection', socket => {
 		const roomDir = `./public/tmp/${message.room}`;
     	const filename = `${message.timedate}_${message.device}.pcm`;
     	const filePath = path.join(roomDir, filename);
-		// 1. Decode the Base64 data from the client
+		//Decode the Base64 data from the client
 		const bufferData = Buffer.from(message.audioData, 'base64');
 		const position = parseInt(message.totData);
 		// Write the audio stream data to the file at the correct position
 		writeToPcmFile(filePath, bufferData, position);
-
-		/*
-		var filename = `./public/tmp/${message.room}/${message.timedate}_${message.device}.pcm`;
-		position = parseInt(message.totData);
-		const bufferData = Buffer.from(message.audioData, 'base64');
-		// Directly write incoming audio data to file at the correct position
-		fs.open(filePath, 'a', (err, fd) => {
-			if (err) return;
-			// Write at the byte position sent from client
-			fs.write(fd, bufferData, 0, bufferData.length, position, (err) => {
-				if (err) console.error(err);
-				fs.close(fd, () => {});
-			});
-		});
-		*/
-
-		// Remove buffering. 
-		//Check buffers initialised
-		/*
-		if(!buffers[message.room])
-		{
-			buffers[message.room] = {};
-		}
-		if(!buffers[message.room][socket.id])
-		{
-			// If not created in the Join function, create a new buffer 20MB for the device.
-			buffers[message.room][socket.id] = Buffer.alloc(20 * 1024 * 1024);
-		}
-		insertDataAtPosition(buffers[message.room][socket.id],bufferData,position);
-		*/
 	});
 
 	socket.on('distanceRecord', function(message)
@@ -215,7 +174,7 @@ io.on('connection', socket => {
 		//console.log('Received "distanceRecord" with command: '+message.command+' from: '+socket.id);
 		if(message.command == 'Started')
 		{
-			console.log("Started received by: "+socket.id)
+			console.log("Started received by: "+socket.id+"  with calibrating: "+message.calibrating)
 			try{
 				io.to(message.master).emit('distanceRecord',{
 					timedate: message.timedate,
@@ -304,7 +263,7 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'Stop')
 		{
-			console.log("Stop command recieved")
+			console.log("Stop command recieved"+"  with calibrating: "+message.calibrating)
 			io.to(message.room).emit('distanceRecord',{
 				timedate: message.timedate,
 				command: message.command,
@@ -315,7 +274,7 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'Start')
 		{
-			console.log("Start command recieved")
+			console.log("Start command recieved"+"  with calibrating: "+message.calibrating)
 			io.to(message.room).emit('distanceRecord',{
 				timedate: message.timedate,
 				command: 'Start',
@@ -338,7 +297,7 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'Stopped')
 		{
-			console.log("Stopped received by: "+socket.id)
+			console.log("Stopped received by: "+socket.id+"  with calibrating: "+message.calibrating)
 			//Log local time of prbs being played
 			fs.appendFile('./public/tmp/'+message.room+'/'+message.timedate,
 			'stoppedrecord '+message.devinarray+': '+message.localtime+'\r',
@@ -359,6 +318,7 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'PRBSFinished')
 		{
+			console.log("PRBSFinished received by: "+socket.id+"  with calibrating: "+message.calibrating)
 			io.to(message.room).emit('distanceRecord',{
 				timedate: message.timedate,
 				command: 'PRBSFinished',
@@ -398,6 +358,7 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'Sync')
 		{
+			console.log("Received Sync Command");
 			// Retrieve list of devices in the room
 			const clientsInRoom = io.sockets.adapter.rooms.get(message.room);
 			if (!clientsInRoom) return;
@@ -460,7 +421,7 @@ io.on('connection', socket => {
 		}
 		else if(message.command == 'SyncAudio')
 		{	
-
+			console.log("Received SyncAudio Command");
 			// Retrieve list of devices in the room
 			const clientsInRoom = io.sockets.adapter.rooms.get(message.room);
 			if (!clientsInRoom) return;
@@ -468,9 +429,7 @@ io.on('connection', socket => {
 			const deviceList = Array.from(clientsInRoom);
     		const roomDir = path.join(__dirname, `./public/tmp/${message.room}`);
 			
-
 			//Run python script to synchronise audio channels
-			//Run python script to determine synchronisation of audio channels
 			const runSyncAudioScript = () => {
 				var scriptArgs = [];
 				scriptArgs.push(message.room)
@@ -520,11 +479,10 @@ io.on('connection', socket => {
 								console.log(`File found on attempt ${attempts + 1}. Sending download link.`);
 								const fileUrlPath = `${message.room}/${zipFileName}`;
 								const fullDownloadUrl = local_deploy
-									? `https://${getLocalIpAddress()}:${PORT}/downloads/${fileUrlPath}`
-									: `https://${Server_URL}/downloads/${fileUrlPath}`;
+									? `https://${getLocalIpAddress()}:${PORT}/tmp/${fileUrlPath}`
+									: `https://${Server_URL}:${PORT}/tmp/${fileUrlPath}`;
 								console.log(`Sending 'DownloadReady' to master. URL: ${fullDownloadUrl}`);
-								// --- FIX 1: SEND THE CORRECT EVENT ---
-								// The client is expecting "DownloadReady", not "distanceRecord".
+								// --- SEND THE EVENT ---
 								io.to(message.master).emit('DownloadReady', {
 									timedate: message.timedate, // Used as part of the filename on the client
 									downloadLink: fullDownloadUrl, // The key the client expects
@@ -539,7 +497,7 @@ io.on('connection', socket => {
 							} else {
 								// Max attempts reached, file never appeared.
 								console.error(`Gave up waiting for file: ${absoluteZipPath}. It never appeared.`);
-								// --- FIX 2: NOTIFY THE CLIENT OF THE FAILURE ---
+								// --- NOTIFY THE CLIENT OF THE FAILURE ---
 								io.to(message.master).emit('customError', {
 									message: `Processing failed: The server could not create the download file for ${zipFileName}.`
 								});
@@ -580,34 +538,110 @@ io.on('connection', socket => {
 				// Detection is not running (or already finished), run immediately
 				runSyncAudioScript();
 			}
-
-			/*
-			// Optional: Handle script termination
-			pyshell.end((err, code, signal) => {
-				if (err) {
-				console.error('Python script execution failed:', err);
-				} else {
-				console.log(`Python script execution completed with code ${code}, signal ${signal}`);
-				// Allow files to be downloaded
-				//const audioFile = './tmp/'+message.room+'/'+message.timedate+'_sync.wav';
-				const audioFile = './tmp/'+message.room+'/'+message.timedate+'_sync.zip';
-				io.to(message.master).emit('distanceRecord',
-				{
-					timedate: message.timedate,
-					command: 'ReadyForDownload',
-					room: message.room,
-					file: audioFile
-				});
-				console.log('Sending download command to master');
-				}
-				// Commands to send download links to master device
-			});
-			*/
 		}
 		else if(message.command == 'download')
 		{
 			// Commands to send download links to master device
-			
+			console.log("Received download Command");
+			// Retrieve list of devices in the room
+			const clientsInRoom = io.sockets.adapter.rooms.get(message.room);
+			if (!clientsInRoom) return;
+			const deviceList = Array.from(clientsInRoom);
+    		const roomDir = path.join(__dirname, `./public/tmp/${message.room}`);
+			// Run python script to package audio streams without synchronisation
+			const runPackAudioScript = () => {
+				var scriptArgs = [];
+				scriptArgs.push(message.room)
+				scriptArgs.push(path.join(__dirname, 'public', 'tmp', message.room, `${message.timedate}`));
+				for (let i = 1; i <= message.devices; i++)
+				{
+					const finalPcmFile = path.join(__dirname, 'public', 'tmp', message.room, `${message.timedate}_${i}.pcm`);
+					scriptArgs.push(finalPcmFile);
+				}
+				let options = {
+					mode: 'text',
+					pythonOptions: ['-u'], // get print results in real-time
+					args: scriptArgs,
+				};
+				
+				const pythonScript = 'PackAudio.py';
+				const pyshell = new PythonShell(pythonScript, options);
+				// Capture messages from the Python script
+				pyshell.on('message', function (message) {
+					console.log('Python message:', message);
+				});
+
+				// Capture error messages from the Python script
+				pyshell.on('stderr', function (stderrMessage) {
+					console.error('Python stderr:', stderrMessage);
+				});
+
+				// Handle errors
+				pyshell.on('error', function (error) {
+					console.error('Python error:', error);
+				});
+
+				// Handle when the script finishes
+				pyshell.on('close', function () {
+					console.log('Python script finished. Preparing download link.');
+					//Absolute path of zip file to check existance
+					const zipFileName = `${message.timedate}.zip`;
+					const absoluteZipPath = path.join(__dirname, 'public','tmp',message.room,zipFileName);
+					// Verification loop to check if the zip file exists and had been released.
+					let attempts = 0;
+					const maxAttempts = 10;
+					const retryDelay = 500; //ms
+					const checkFileAndSendLink = () => {
+						fs.access(absoluteZipPath, fs.constants.F_OK, (err) => {
+							if(!err) {
+								// File exists, proceed to send the link
+								console.log(`File found on attempt ${attempts + 1}. Sending download link.`);
+								const fileUrlPath = `${message.room}/${zipFileName}`;
+								const fullDownloadUrl = local_deploy
+									? `https://${getLocalIpAddress()}:${PORT}/tmp/${fileUrlPath}`
+									: `https://${Server_URL}:${PORT}/tmp/${fileUrlPath}`;
+								console.log(`Sending 'DownloadReady' to master. URL: ${fullDownloadUrl}`);
+								// --- SEND THE EVENT ---
+								io.to(message.master).emit('DownloadReady', {
+									timedate: message.timedate, // Used as part of the filename on the client
+									downloadLink: fullDownloadUrl, // The key the client expects
+								});
+								// Clean up the promise tracker
+								delete roomProcessingPromises[message.room];
+							} else if (attempts < maxAttempts) {
+								// File doesn't exist yet, retry after a delay
+								attempts++;
+								console.log(`File not found, retrying... (Attempt ${attempts}/${maxAttempts})`);
+								setTimeout(checkFileAndSendLink, retryDelay);
+							} else {
+								// Max attempts reached, file never appeared.
+								console.error(`Gave up waiting for file: ${absoluteZipPath}. It never appeared.`);
+								// --- NOTIFY THE CLIENT OF THE FAILURE ---
+								io.to(message.master).emit('customError', {
+									message: `Processing failed: The server could not create the download file for ${zipFileName}.`
+								});
+								// Clean up the promise tracker
+								delete roomProcessingPromises[message.room];
+							}
+						});
+					}
+					if(!local_deploy) // If clousd deployment, start client download process.
+					{
+						checkFileAndSendLink();
+					}
+					else //Local deployment, send a message.
+					{
+						io.to(message.master).emit('distanceRecord',{
+							timedate: message.timedate,
+							command: 'PackFinished',
+							devinarray: message.devinarray,
+							room: message.room,
+							master: message.master
+						});
+					}
+				});
+			};
+			runPackAudioScript();
 		}
 	});
 	
@@ -744,9 +778,9 @@ function deleteRoomFolder(roomId) {
     const folderPath = path.join(__dirname, 'public', 'tmp', roomId);
     fs.rm(folderPath, { recursive: true, force: true }, (err) => {
         if (err) {
-            console.error(`❗️ Failed to delete folder ${folderPath}:`, err);
+            console.error(`Failed to delete folder ${folderPath}:`, err);
         } else {
-            console.log(`🗑️ Deleted folder for room ${roomId}`);
+            console.log(`Deleted folder for room ${roomId}`);
         }
     });
 }

@@ -3,7 +3,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[![DOI]()]()
+[![DOI](https://zenodo.org/badge/676993331.svg)](https://doi.org/10.5281/zenodo.20383165)
 
 ## Overview
 **SyncRecord** is an open‑source Android application that turns a group of smartphones into a synchronised microphone array. 

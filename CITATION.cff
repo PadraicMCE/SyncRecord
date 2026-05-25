@@ -1,0 +1,56 @@
+cff-version: 1.2.0
+title: SyncRecord
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Padraic
+    family-names: Mcevoy
+    email: padraic.mcevoy@tudublin.ie
+    affiliation: 'SEEE, Technological University Dublin'
+    orcid: 'https://orcid.org/0000-0002-3372-6436'
+  - given-names: Damon
+    family-names: Berry
+    email: damon.berry@tudublin.ie
+    affiliation: 'SEEE, Technological University Dublin'
+    orcid: 'https://orcid.org/0000-0002-2290-7661'
+  - given-names: Ted
+    family-names: Burke
+    email: ted.burke@tudublin.ie
+    affiliation: 'SEEE, Technological University Dublin'
+repository-code: 'https://github.com/PadraicMCE/SyncRecord'
+abstract: >-
+  SyncRecord is an open-source Android application that
+  enables the synchronisation of audio recordings across
+  multiple, spatially distributed smartphones, transforming
+  the grouped devices into an ad hoc, synchronised
+  microphone array. The system employs an audible
+  pseudo-random binary sequence (PRBS) signal emitted from
+  the devices' speakers and cross-correlates the captured
+  audio to extract propagation-delay information embedded in
+  the audio streams. This approach reduces temporal
+  misalignment across recordings to within 46 µs (2 samples
+  at 48 kHz), and enables the estimation of the distance
+  between any pair of devices to a mean accuracy of 14 mm. A
+  key part of the system architecture is its server-side
+  framework, which facilitates inter-device communication,
+  real-time audio streaming, and signal processing. The
+  server-side component can be deployed locally to minimise
+  latency, enhance data privacy, and provide additional
+  control over data handling. Alternatively, this component
+  can operate via a cloud-based server when scalability or
+  computational offloading is required. SyncRecord
+  prioritises transient data handling, with cloud deployment
+  having no audio stored beyond the recording session, and
+  all existing streams removed, enhancing data privacy.
+keywords:
+  - Synchronisation
+  - Smartphones
+  - Android
+  - ad-hoc microphone array
+  - PRBS; audio localisation
+license: MIT
+commit: 5329062c06256b1688d7061a46197c1e41fb94dd
+version: 1.0.0
+date-released: '2026-05-25'

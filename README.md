@@ -96,7 +96,9 @@ cd SyncRecord
 ### 3. Install dependencies
 ```bash
 pip install -r requirements.txt
+npm init
 npm ci
+npm audit fix
 ```
 ### 4. Run the server
 ```bash

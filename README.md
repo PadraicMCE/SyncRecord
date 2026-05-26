@@ -187,5 +187,5 @@ The **source code** in this repository is released under the **MIT License**.
 
 The **paper** that describes SyncRecord is licensed under **Creative Commons Attribution 4.0 International (CC-BY 4.0)** as required by the *Journal of Open Research Software*.
 
-A Preprint of the paper is available at: https://doi.org/10.5281/zenodo.20381907
+A Preprint of the paper is available at: https://doi.org/10.5281/zenodo.20398119
 

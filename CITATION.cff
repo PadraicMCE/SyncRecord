@@ -6,7 +6,7 @@ message: >-
 type: software
 authors:
   - given-names: Padraic
-    family-names: Mcevoy
+    family-names: McEvoy
     email: padraic.mcevoy@tudublin.ie
     affiliation: 'SEEE, Technological University Dublin'
     orcid: 'https://orcid.org/0000-0002-3372-6436'
@@ -19,6 +19,7 @@ authors:
     family-names: Burke
     email: ted.burke@tudublin.ie
     affiliation: 'SEEE, Technological University Dublin'
+    orcid: 'https://orcid.org/0000-0002-4806-3436'
 repository-code: 'https://github.com/PadraicMCE/SyncRecord'
 abstract: >-
   SyncRecord is an open-source Android application that

@@ -58,9 +58,9 @@ SyncAudio.py aligns streams and builds the final archive.
 
 ## Quick Start
 
----
-## Linux
-### 1. Download and install NodeJS
+## Server
+### Linux
+#### 1. Download and install NodeJS
 ```bash
 sudo apt update
 sudo apt upgrade
@@ -68,45 +68,47 @@ sudo apt install nodejs
 sudo apt install npm
 ```
 
-## Windows
+### Windows
 
-### 1. Download and install NodeJS
+#### 1. Download and install NodeJS
 <a href="https://nodejs.org/en/download" target="_blank">https://nodejs.org/en/download</a>
 
 
-## MacOS
+### MacOS
 
 Installing NodeJS on MacOS and following steps 2 -> 7 should work. But it has not been tested.
 
 ---
 ---
-### 2. Clone the repository
+#### 2. Clone the repository
 ```bash
 git clone https://github.com/PadraicMCE/SyncRecord.git
 cd SyncRecord
 ```
 
 ---
-### 3. Install dependencies
+#### 3. Install dependencies
 ```bash
 pip install -r requirements.txt
 npm init
 npm ci
 npm audit fix
 ```
-### 4. Run the server
+#### 4. Run the server
 ```bash
 node server.js
 ```
 For cloud deployment, change the `local_deploy` variable to False, before running the `server.js` script.
 
-### 5. Install the SyncRecord Android App
-Install the SyncRecord Android .apk on to the Android smartphones being used in the microphone array.
+## Client
+#### 5. Install the SyncRecord Android App
+Install the SyncRecord App .apk on to the Android smartphones being used in the microphone array.
 
-### 6. First-time configuration (client side)
+#### 6. First-time configuration (client side)
 1. Launch the **SyncRecord** app on the device.
 2. Open the **Settings** (gear icon) -> **Socket Address**
 3. Enter the server address:
+
     *For a local server:* 
     `http://<your-PC_IP>:3000`
 
@@ -115,7 +117,7 @@ Install the SyncRecord Android .apk on to the Android smartphones being used in 
 4. Choose **Connection type** (`Local` or `Cloud`) to match the server you started.
 The client will now be able to join sessions hosted by that server.
 
-### 7. Running a recording session
+#### 7. Running a recording session
 Steps:
 1. On master device press `Create Array`. A 4-character array UID appears.
 2. On slave device(s) press `Join Array` and enter the UID shown on the master device, then press `Join`.

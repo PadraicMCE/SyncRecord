@@ -1,0 +1,19 @@
+# SyncRecord Server Docker Container
+version: '3.9'
+
+services:
+  node-app:
+    build: .
+    container_name: comm-server
+    restart: unless-stopped
+    ports:
+      # Maps Host Port 3000 -> Container Port 3000
+      - "3000:3000"
+    networks:
+      - app-net
+    environment:
+      - NODE_ENV=production
+
+networks:
+  app-net:
+    driver: bridge

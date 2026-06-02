@@ -58,12 +58,6 @@ SyncAudio.py aligns streams and builds the final archive.
 
 ## Quick Start
 
-### *Prerequisites*
-- *Android SDK 31 (Android 10) - Device must support* `MediaRecorder.AudioSource.UNPROCESSED` *audio source*.
-- *Kotlin 1.8, Gradle 8.13 (wrapper included)*.
-- *Node.js (v18.19.1 used during development), npm - bundled with Node (9.2.0 used during development)*
-- *Python 3.12.3* used during development
-
 ---
 ## Linux
 ### 1. Download and install NodeJS
@@ -130,7 +124,13 @@ Steps:
 5. If cloud-hosted, after recording has stopped, the master receives a zip file containing audio streams and metadata.
 If locally-hosted, the files remain on the server in the `SyncRecord/tmp/<UID>` directory.
 
-## Installation
+## Installation and Building
+
+### *Prerequisites*
+- *Android SDK 31 (Android 10) - Device must support* `MediaRecorder.AudioSource.UNPROCESSED` *audio source*.
+- *Kotlin 1.8, Gradle 8.13 (wrapper included)*.
+- *Node.js (v18.19.1 used during development), npm - bundled with Node (9.2.0 used during development)*
+- *Python 3.12.3* used during development
 
 ### Server Directory Layout
 
@@ -178,11 +178,54 @@ Distance information is needed to run the `SyncAudio.py` script. This data is av
 python SyncAudio.py ./public/test_data/ ./public/test_data/1751379318_sync ./public/test_data/1751379318_2.pcm ./public/test_data/1751379318_3.pcm ./public/test_data/1751379318_4.pcm
 ```
 
-## Citation
+---
+---
+# Instructions
+## Server Administrators
+### Deploying the server locally
+Run the docker container.
+Location of recordings and metadata on local server.
+
+### Deploying the server on the cloud
+Run docker container. -> Set options.
+Adding ssl certificates. -> Domain name.
+
+## System Users
+Android app. Install using the included .apk file or through F-Droid/Google Play.
+
+<img src="./images/Main_Screen.png" alt="SyncRecord App Main Screen." style="height: ; width:50%;"/>
+
+Connect through the default deployed SyncRecord server, or change the connection settings in the app options.
+
+<img src="./images/SocketOptions.png" alt="App Options Button." style="height: ; width:45%;"/>
+
+<img src="./images/Cloud_Hosted.png" alt="Connecting to cloud hosted." style="height: ; width:45%;"/>
+<img src="./images/Local_Hosted.png" alt="Connecting to local hosted." style="height: ; width:45%;"/>
+
+Create an array (generates a UID) -> Slave(s) join the array using the UID. The mastet chooses one of three operating options (synchronised audio recording, unsynchronised audio recording, localise array devices).
+
+<img src="./images/Master_Screen.png" alt="Master Device." style="height: ; width:45%;"/>
+
+<img src="./images/Slave_Join.png" alt="Slave device joing the array." style="height: ; width:45%;"/>
+<img src="./images/Slave_Screen.png" alt="Slave Device." style="height: ; width:45%;"/>
+
+
+### Retriving audio recordings and/or metadata
+#### Locally deployed
+If the server is locally deployed, the audio recordings are located at:
+```bash
+SyncRecord/public/tmp/UID/.
+```
+
+#### Cloud deployed
+If the server is cloud deployed, the audio recordings and metadata are not stored post recording. The audio recordings and meta data are sent for download after each recording is capured, or the array is localised.
+
+---
+---
+# Citation
 If you use SyncRecord in your research, please use the citation file included in this repo:
 
-
-## License
+# License
 The **source code** in this repository is released under the **MIT License**.
 
 The **paper** that describes SyncRecord is licensed under **Creative Commons Attribution 4.0 International (CC-BY 4.0)** as required by the *Journal of Open Research Software*.

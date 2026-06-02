@@ -22,32 +22,48 @@ for i in range(1, len(sys.argv) - 2):
 max_length = 0
 # Read audio from arguments
 audio = {}
-for i in range(1, len(sys.argv) - 2):
-    #print(sys.argv[i+2])
-    audio[f"audio{i}"] = numpy.memmap(sys.argv[i+2], dtype='int16', mode='r+')
-    if(len(audio[f"audio{i}"]) > max_length):
-        max_length = len(audio[f"audio{i}"])
+try:
+    for i in range(1, len(sys.argv) - 2):
+        #print(sys.argv[i+2])
+        audio[f"audio{i}"] = numpy.memmap(sys.argv[i+2], dtype='int16', mode='r+')
+        if(len(audio[f"audio{i}"]) > max_length):
+            max_length = len(audio[f"audio{i}"])
+except Exception as e:
+    # Send error back to server
+    pass
 
 # Pad all audio streams so they are the same length
-for device in audio:
-    if len(audio[device]) < max_length:
-        padding = max_length - len(audio[device])
-        audio[device] = numpy.pad(audio[device], (0, padding), mode='constant')
+try:
+    for device in audio:
+        if len(audio[device]) < max_length:
+            padding = max_length - len(audio[device])
+            audio[device] = numpy.pad(audio[device], (0, padding), mode='constant')
+except Exception as e:
+    # Send error back to server
+    pass
 
 #Save audio channels seperately and in zip file
 sample_rate = 48000
-for i in range(1,len(sys.argv)-2):
-    #parse file extension
-    base = os.path.basename(sys.argv[i+2])
-    base, ext = os.path.splitext(base)
-    directory = os.path.dirname(sys.argv[i+2])
-    #Change directory where wav files are created
-    scipy.io.wavfile.write(f"{directory}/{base}.wav", sample_rate, audio[f"audio{i}"])
-
-with zipfile.ZipFile(f"{sys.argv[2]}.zip", 'w') as zipf:
-    #Add audio channel files
-    for i in range(1,len(sys.argv)-2):#
+try:
+    for i in range(1,len(sys.argv)-2):
+        #parse file extension
         base = os.path.basename(sys.argv[i+2])
         base, ext = os.path.splitext(base)
-        zipf.write(f"{directory}/{base}.wav",f"{base}.wav")
-        zipf.write(sys.argv[i+2],f"{base}.pcm")
+        directory = os.path.dirname(sys.argv[i+2])
+        #Change directory where wav files are created
+        scipy.io.wavfile.write(f"{directory}/{base}.wav", sample_rate, audio[f"audio{i}"])
+except Exception as e:
+    # Send error back to server
+    pass
+
+try:
+    with zipfile.ZipFile(f"{sys.argv[2]}.zip", 'w') as zipf:
+        #Add audio channel files
+        for i in range(1,len(sys.argv)-2):#
+            base = os.path.basename(sys.argv[i+2])
+            base, ext = os.path.splitext(base)
+            zipf.write(f"{directory}/{base}.wav",f"{base}.wav")
+            zipf.write(sys.argv[i+2],f"{base}.pcm")
+except Exception as e:
+    # Send error back to server
+    pass

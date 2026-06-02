@@ -412,13 +412,20 @@ io.on('connection', socket => {
 				// Capture error messages from the Python script
 				pyshell.on('stderr', function (stderrMessage) {
 					console.error('Python stderr:', stderrMessage);
+					io.to(message.master).emit('distanceRecord', {
+						timedate: message.timedate,
+						command: 'ReadyForSync',
+						room: message.room,
+						master: message.master,
+						calibrating: message.calibrating
+					});
 				});
 				// Handle when the script finishes
 				pyshell.on('close', function () {
 					console.log('Python script finished.');
-					io.to(message.master).emit('distanceRecord', {
+					io.to(message.master).emit('customError', {
 						timedate: message.timedate,
-						command: 'ReadyForSync',
+						command: 'DetectionFailed',
 						room: message.room,
 						master: message.master,
 						calibrating: message.calibrating
@@ -518,13 +525,19 @@ io.on('connection', socket => {
 				// Capture error messages from the Python script
 				pyshell.on('stderr', function (stderrMessage) {
 					console.error('Python stderr:', stderrMessage);
-				});
 
+				});
 				// Handle errors
 				pyshell.on('error', function (error) {
 					console.error('Python error:', error);
+					io.to(message.master).emit('customError', {
+						timedate: message.timedate,
+						command: 'DetectionFailed',
+						room: message.room,
+						master: message.master,
+						calibrating: message.calibrating
+					});
 				});
-
 				// Handle when the script finishes
 				pyshell.on('close', function () {
 					console.log('Python script finished. Preparing download link.');

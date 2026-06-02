@@ -304,81 +304,100 @@ correlations_copy = {}
 valid_groups = {}
 problematic_peaks = {}
 
-for i in range(1,len(audio)+1):
-    correlations[f"corr{i}"] = numpy.correlate(a=audio[f"audio{i}"], v=data1)
-    correlations[f"corr{i}"] = correlations[f"corr{i}"]/numpy.max(numpy.abs(correlations[f"corr{i}"]))
-    correlations_copy[f"corr{i}"] = numpy.copy(correlations[f"corr{i}"])
+try:
+    for i in range(1,len(audio)+1):
+        correlations[f"corr{i}"] = numpy.correlate(a=audio[f"audio{i}"], v=data1)
+        correlations[f"corr{i}"] = correlations[f"corr{i}"]/numpy.max(numpy.abs(correlations[f"corr{i}"]))
+        correlations_copy[f"corr{i}"] = numpy.copy(correlations[f"corr{i}"])
+except Exception as e:
+    # Send error back to server
+    pass
 
 # Find initial peaks in correlations. Top amplitude peaks 3* number of devices.
-for i in range(1,len(correlations)+1):
-    correlation_peaks[f"corr{i}"] = []
-    correlation_peaks[f"corr{i}"].append(numpy.nanargmax(correlations[f"corr{i}"]))
-    correlations[f"corr{i}"][correlation_peaks[f"corr{i}"][0]-bz:correlation_peaks[f"corr{i}"][0]+bz] = 0
-    for j in range(1,len(devices)*3):
+try:
+    for i in range(1,len(correlations)+1):
+        correlation_peaks[f"corr{i}"] = []
         correlation_peaks[f"corr{i}"].append(numpy.nanargmax(correlations[f"corr{i}"]))
-        correlations[f"corr{i}"][correlation_peaks[f"corr{i}"][j]-bz:correlation_peaks[f"corr{i}"][j]+bz] = 0
-    correlation_peaks[f"corr{i}"] = np.sort(correlation_peaks[f"corr{i}"])
+        correlations[f"corr{i}"][correlation_peaks[f"corr{i}"][0]-bz:correlation_peaks[f"corr{i}"][0]+bz] = 0
+        for j in range(1,len(devices)*3):
+            correlation_peaks[f"corr{i}"].append(numpy.nanargmax(correlations[f"corr{i}"]))
+            correlations[f"corr{i}"][correlation_peaks[f"corr{i}"][j]-bz:correlation_peaks[f"corr{i}"][j]+bz] = 0
+        correlation_peaks[f"corr{i}"] = np.sort(correlation_peaks[f"corr{i}"])
+except Exception as e:
+    # Send error back to server
+    pass
 
 # Validate and correct peaks for each device dynamically
-for i in range(1, len(correlations) + 1):
-    # Check valid groups in the peaks
-    valid_groups[f"corr{i}"], problematic_peaks[f"corr{i}"] = validate_and_correct_peak_groups(
-        correlation_peaks[f"corr{i}"], correlations_copy[f"corr{i}"][correlation_peaks[f"corr{i}"]], expected_spacing=765, tolerance=peak_tolerance, max_group_size=3
-    )
-    valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
-    if len(valid_groups[f"corr{i}"]) < len(devices):
-        # Preprocess: Remove problematic peaks that are already in valid groups
-        valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
-        problematic_peaks[f"corr{i}"] = [peak for peak in problematic_peaks[f"corr{i}"] if peak not in valid_peak_positions_temp]
-        # Copy of correlation stream to zero out valid groups.
-        corr = np.copy(correlations_copy[f"corr{i}"])
-        for peak in valid_peak_positions_temp:
-            corr[peak-bz:peak+bz] = 0
-        # Cycle through peaks again
-        corr_peaks = []
-        corr_peaks.append(numpy.nanargmax(corr))
-        corr[corr_peaks[0]-bz:corr_peaks[0]+bz] = 0
-        for j in range(1,len(devices)*3):
-            corr_peaks.append(numpy.nanargmax(corr))
-            corr[corr_peaks[j]-bz:corr_peaks[j]+bz] = 0
-        valid_groups_temp, problematic_peaks_temp = validate_and_correct_peak_groups(
-            corr_peaks, correlations_copy[f"corr{i}"][corr_peaks], expected_spacing=765, tolerance=3, max_group_size=3
+try:
+    for i in range(1, len(correlations) + 1):
+        # Check valid groups in the peaks
+        valid_groups[f"corr{i}"], problematic_peaks[f"corr{i}"] = validate_and_correct_peak_groups(
+            correlation_peaks[f"corr{i}"], correlations_copy[f"corr{i}"][correlation_peaks[f"corr{i}"]], expected_spacing=765, tolerance=peak_tolerance, max_group_size=3
         )
-        if(valid_groups_temp):
-            valid_groups[f"corr{i}"].extend(valid_groups_temp)
-        if(len(valid_groups[f"corr{i}"]) < len(devices)):
+        valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
+        if len(valid_groups[f"corr{i}"]) < len(devices):
+            # Preprocess: Remove problematic peaks that are already in valid groups
             valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
             problematic_peaks[f"corr{i}"] = [peak for peak in problematic_peaks[f"corr{i}"] if peak not in valid_peak_positions_temp]
-            completed_groups = revalidate_problematic_peaks(
-                problematic_peaks_temp, numpy.copy(correlations_copy[f"corr{i}"]), valid_groups[f"corr{i}"],
-                window_size=window_size, spacing=765, tolerance=peak_tolerance
+            # Copy of correlation stream to zero out valid groups.
+            corr = np.copy(correlations_copy[f"corr{i}"])
+            for peak in valid_peak_positions_temp:
+                corr[peak-bz:peak+bz] = 0
+            # Cycle through peaks again
+            corr_peaks = []
+            corr_peaks.append(numpy.nanargmax(corr))
+            corr[corr_peaks[0]-bz:corr_peaks[0]+bz] = 0
+            for j in range(1,len(devices)*3):
+                corr_peaks.append(numpy.nanargmax(corr))
+                corr[corr_peaks[j]-bz:corr_peaks[j]+bz] = 0
+            valid_groups_temp, problematic_peaks_temp = validate_and_correct_peak_groups(
+                corr_peaks, correlations_copy[f"corr{i}"][corr_peaks], expected_spacing=765, tolerance=3, max_group_size=3
             )
-            if(completed_groups):
-                valid_groups[f"corr{i}"].extend(completed_groups)
+            if(valid_groups_temp):
+                valid_groups[f"corr{i}"].extend(valid_groups_temp)
+            if(len(valid_groups[f"corr{i}"]) < len(devices)):
+                valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
+                problematic_peaks[f"corr{i}"] = [peak for peak in problematic_peaks[f"corr{i}"] if peak not in valid_peak_positions_temp]
+                completed_groups = revalidate_problematic_peaks(
+                    problematic_peaks_temp, numpy.copy(correlations_copy[f"corr{i}"]), valid_groups[f"corr{i}"],
+                    window_size=window_size, spacing=765, tolerance=peak_tolerance
+                )
+                if(completed_groups):
+                    valid_groups[f"corr{i}"].extend(completed_groups)
+            valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
+            correlation_peaks[f"corr{i}"] = [x for x in correlation_peaks[f"corr{i}"] if x in valid_peak_positions_temp]
+        elif (len(valid_groups[f"corr{i}"]) < len(devices)):
+            print(f"Too many valid groups in correlation {i}")
+        # Sort by the first peak in each group    
+        valid_groups[f"corr{i}"] = sorted(valid_groups[f"corr{i}"], key=lambda x: x[0])
+        potential_reflections = find_additional_groups_near_valid_groups(correlations_copy[f"corr{i}"].copy(), valid_groups[f"corr{i}"], window_size=1000, spacing=765, tolerance=2)
+        if(potential_reflections):
+            most_likely_reflection = min(potential_reflections, key=lambda x: x[0])
+            closest_group = min(valid_groups[f"corr{i}"], key=lambda x: abs(x[1] - most_likely_reflection[1]))
+            potential_reflections = None
+            if(most_likely_reflection[1] < closest_group[1]):
+                # Reconstruct the list: if it's the match, swap it; otherwise, keep it.
+                valid_groups[f"corr{i}"] = [most_likely_reflection if x == closest_group else x for x in valid_groups[f"corr{i}"]]
+        # Flatten valid groups into a list of peak positions
         valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
-        correlation_peaks[f"corr{i}"] = [x for x in correlation_peaks[f"corr{i}"] if x in valid_peak_positions_temp]
-    elif (len(valid_groups[f"corr{i}"]) < len(devices)):
-        print(f"Too many valid groups in correlation {i}")
-    # Sort by the first peak in each group    
-    valid_groups[f"corr{i}"] = sorted(valid_groups[f"corr{i}"], key=lambda x: x[0])
-    potential_reflections = find_additional_groups_near_valid_groups(correlations_copy[f"corr{i}"].copy(), valid_groups[f"corr{i}"], window_size=1000, spacing=765, tolerance=2)
-    if(potential_reflections):
-        most_likely_reflection = min(potential_reflections, key=lambda x: x[0])
-        closest_group = min(valid_groups[f"corr{i}"], key=lambda x: abs(x[1] - most_likely_reflection[1]))
-        potential_reflections = None
-        if(most_likely_reflection[1] < closest_group[1]):
-            # Reconstruct the list: if it's the match, swap it; otherwise, keep it.
-            valid_groups[f"corr{i}"] = [most_likely_reflection if x == closest_group else x for x in valid_groups[f"corr{i}"]]
-    # Flatten valid groups into a list of peak positions
-    valid_peak_positions_temp = [peak for group in valid_groups[f"corr{i}"] for peak in group]
-    problematic_peak_positions = problematic_peaks[f"corr{i}"]
+        problematic_peak_positions = problematic_peaks[f"corr{i}"]
+except Exception as e:
+    # Send error back to server
+    pass
+try:
+    # Create file to save distance / sync information
+    file_path_sync = f"{file_path}_sync"
+except Exception as e:
+    # Send error back to server
+    pass
 
-# Create file to save distance / sync information
-file_path_sync = f"{file_path}_sync"
-
-# Sort correlation peaks
-for i in range(1, len(devices)+1):
-    correlation_peaks[f"corr{i}"] = numpy.sort(correlation_peaks[f"corr{i}"])
+try:
+    # Sort correlation peaks
+    for i in range(1, len(devices)+1):
+        correlation_peaks[f"corr{i}"] = numpy.sort(correlation_peaks[f"corr{i}"])
+except Exception as e:
+    # Send error back to server
+    pass
 
 #Round robin pairs
 devices_list = list(range(1,len(devices)+1))
@@ -387,119 +406,123 @@ device_pairs = list(combinations(devices_list,2))
 recording_pairs = list(combinations(recordings,2))
 
 # Get sample differences across all pairs of devices
-for (r1, r2) in recording_pairs:
-    
-    valid_peak_positions[f"corr{r1}"] = [peak for group in valid_groups[f"corr{r1}"] for peak in group]
-    valid_peak_positions[f"corr{r2}"] = [peak for group in valid_groups[f"corr{r2}"] for peak in group]
+try:
+    for (r1, r2) in recording_pairs:
+        
+        valid_peak_positions[f"corr{r1}"] = [peak for group in valid_groups[f"corr{r1}"] for peak in group]
+        valid_peak_positions[f"corr{r2}"] = [peak for group in valid_groups[f"corr{r2}"] for peak in group]
 
-    # Device 1 PRBS 1
-    window = numpy.copy(correlations_copy[f"corr{r1}"])
-    window = window[valid_peak_positions[f"corr{r1}"][(r1*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r1}"][(r1*3)-2]+int(window_size/2)]
-    window = window / numpy.max(numpy.abs(window))
-    windows[f"corr{r1}_{r1}"] =  numpy.copy(window)
-    ## Interpolated Spline
-    min_val = np.min(windows[f"corr{r1}_{r1}"])
-    max_val = np.max(windows[f"corr{r1}_{r1}"])
-    # Get the number of elements in samples
-    original_length = len(windows[f"corr{r1}_{r1}"])
-    x_coordinates = np.arange(len(window))
-    # Calculate the desired number of points for the new array
-    num_points = (original_length -1) * 10 + 1
-    # Create the new array using np.linspace
-    fineSamples = np.linspace(0, len(window)-1, num_points)
-    # Interpolate the window
-    f_cubic = interpolate.interp1d(x_coordinates, window, kind='cubic')
-    interpolated_windows[f"corr{r1}_{r1}"] = f_cubic(fineSamples)
-    peaks = findLocalMaxima(interpolated_windows[f"corr{r1}_{r1}"])
-    local_peaks[f"corr{r1}_{r1}"] = peaks
-    major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r1}_{r1}"])
-    major_peaks[f"corr{r1}_{r1}"] = major_peak[0][0]
+        # Device 1 PRBS 1
+        window = numpy.copy(correlations_copy[f"corr{r1}"])
+        window = window[valid_peak_positions[f"corr{r1}"][(r1*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r1}"][(r1*3)-2]+int(window_size/2)]
+        window = window / numpy.max(numpy.abs(window))
+        windows[f"corr{r1}_{r1}"] =  numpy.copy(window)
+        ## Interpolated Spline
+        min_val = np.min(windows[f"corr{r1}_{r1}"])
+        max_val = np.max(windows[f"corr{r1}_{r1}"])
+        # Get the number of elements in samples
+        original_length = len(windows[f"corr{r1}_{r1}"])
+        x_coordinates = np.arange(len(window))
+        # Calculate the desired number of points for the new array
+        num_points = (original_length -1) * 10 + 1
+        # Create the new array using np.linspace
+        fineSamples = np.linspace(0, len(window)-1, num_points)
+        # Interpolate the window
+        f_cubic = interpolate.interp1d(x_coordinates, window, kind='cubic')
+        interpolated_windows[f"corr{r1}_{r1}"] = f_cubic(fineSamples)
+        peaks = findLocalMaxima(interpolated_windows[f"corr{r1}_{r1}"])
+        local_peaks[f"corr{r1}_{r1}"] = peaks
+        major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r1}_{r1}"])
+        major_peaks[f"corr{r1}_{r1}"] = major_peak[0][0]
 
-    # Device 1 PRBS 2
-    window = numpy.copy(correlations_copy[f"corr{r1}"])
-    window = window[valid_peak_positions[f"corr{r1}"][(r2*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r1}"][(r2*3)-2]+int(window_size/2)]
-    window = window / numpy.max(numpy.abs(window))
-    windows[f"corr{r1}_{r2}"] =  numpy.copy(window)
-    ## Interpolated Spline
-    min_val = np.min(windows[f"corr{r1}_{r2}"])
-    max_val = np.max(windows[f"corr{r1}_{r2}"])
-    # Get the number of elements in samples
-    original_length = len(windows[f"corr{r1}_{r2}"])
-    x_coordinates = np.arange(len(window))
-    # Calculate the desired number of points for the new array
-    num_points = original_length * 10
-    # Create the new array using np.linspace
-    fineSamples = np.linspace(0, len(window)-1, num_points)
-    # Interpolate the window
-    f_cubic = interpolate.interp1d(x_coordinates, window, kind='cubic')
-    interpolated_windows[f"corr{r1}_{r2}"] = f_cubic(fineSamples)
-    peaks = findLocalMaxima(interpolated_windows[f"corr{r1}_{r2}"])
-    local_peaks[f"corr{r1}_{r2}"] = peaks
-    major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r1}_{r2}"])
-    major_peaks[f"corr{r1}_{r2}"] = major_peak[0][0]
+        # Device 1 PRBS 2
+        window = numpy.copy(correlations_copy[f"corr{r1}"])
+        window = window[valid_peak_positions[f"corr{r1}"][(r2*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r1}"][(r2*3)-2]+int(window_size/2)]
+        window = window / numpy.max(numpy.abs(window))
+        windows[f"corr{r1}_{r2}"] =  numpy.copy(window)
+        ## Interpolated Spline
+        min_val = np.min(windows[f"corr{r1}_{r2}"])
+        max_val = np.max(windows[f"corr{r1}_{r2}"])
+        # Get the number of elements in samples
+        original_length = len(windows[f"corr{r1}_{r2}"])
+        x_coordinates = np.arange(len(window))
+        # Calculate the desired number of points for the new array
+        num_points = original_length * 10
+        # Create the new array using np.linspace
+        fineSamples = np.linspace(0, len(window)-1, num_points)
+        # Interpolate the window
+        f_cubic = interpolate.interp1d(x_coordinates, window, kind='cubic')
+        interpolated_windows[f"corr{r1}_{r2}"] = f_cubic(fineSamples)
+        peaks = findLocalMaxima(interpolated_windows[f"corr{r1}_{r2}"])
+        local_peaks[f"corr{r1}_{r2}"] = peaks
+        major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r1}_{r2}"])
+        major_peaks[f"corr{r1}_{r2}"] = major_peak[0][0]
 
-    # Device 2 PRBS 2
-    window = numpy.copy(correlations_copy[f"corr{r2}"])
-    window = window[valid_peak_positions[f"corr{r2}"][(r2*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r2}"][(r2*3)-2]+int(window_size/2)]
-    window = window / numpy.max(numpy.abs(window))
-    windows[f"corr{r2}_{r2}"] =  numpy.copy(window)
-    ## Interpolated Spline
-    min_val = np.min(windows[f"corr{r2}_{r2}"])
-    max_val = np.max(windows[f"corr{r2}_{r2}"])
-    # Get the number of elements in samples
-    original_length = len(windows[f"corr{r2}_{r2}"])
-    x_coordinates = np.arange(len(window))
-    # Calculate the desired number of points for the new array
-    num_points = (original_length -1) * 10 + 1
-    # Create the new array using np.linspace
-    fineSamples = np.linspace(0, len(window)-1, num_points)
-    # Interpolate the window
-    f_cubic = interpolate.interp1d(x_coordinates, window, kind='cubic')
-    interpolated_windows[f"corr{r2}_{r2}"] = f_cubic(fineSamples)
-    peaks = findLocalMaxima(interpolated_windows[f"corr{r2}_{r2}"])
-    local_peaks[f"corr{r2}_{r2}"] = peaks
-    major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r2}_{r2}"])
-    major_peaks[f"corr{r2}_{r2}"] = major_peak[0][0]
+        # Device 2 PRBS 2
+        window = numpy.copy(correlations_copy[f"corr{r2}"])
+        window = window[valid_peak_positions[f"corr{r2}"][(r2*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r2}"][(r2*3)-2]+int(window_size/2)]
+        window = window / numpy.max(numpy.abs(window))
+        windows[f"corr{r2}_{r2}"] =  numpy.copy(window)
+        ## Interpolated Spline
+        min_val = np.min(windows[f"corr{r2}_{r2}"])
+        max_val = np.max(windows[f"corr{r2}_{r2}"])
+        # Get the number of elements in samples
+        original_length = len(windows[f"corr{r2}_{r2}"])
+        x_coordinates = np.arange(len(window))
+        # Calculate the desired number of points for the new array
+        num_points = (original_length -1) * 10 + 1
+        # Create the new array using np.linspace
+        fineSamples = np.linspace(0, len(window)-1, num_points)
+        # Interpolate the window
+        f_cubic = interpolate.interp1d(x_coordinates, window, kind='cubic')
+        interpolated_windows[f"corr{r2}_{r2}"] = f_cubic(fineSamples)
+        peaks = findLocalMaxima(interpolated_windows[f"corr{r2}_{r2}"])
+        local_peaks[f"corr{r2}_{r2}"] = peaks
+        major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r2}_{r2}"])
+        major_peaks[f"corr{r2}_{r2}"] = major_peak[0][0]
 
-    #Device 2 PRBS 1
-    window = numpy.copy(correlations_copy[f"corr{r2}"])
-    window = window[valid_peak_positions[f"corr{r2}"][(r1*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r2}"][(r1*3)-2]+int(window_size/2)]
-    window = window / numpy.max(numpy.abs(window))
-    windows[f"corr{r2}_{r1}"] =  numpy.copy(window)
-    ## Interpolated Spline
-    min_val = np.min(windows[f"corr{r2}_{r1}"])
-    max_val = np.max(windows[f"corr{r2}_{r1}"])
-    # Get the number of elements in samples
-    original_length = len(windows[f"corr{r2}_{r1}"])
-    x_coordinates = np.arange(len(window))
-    # Calculate the desired number of points for the new array
-    num_points = original_length * 10
-    # Create the new array using np.linspace
-    fineSamples = np.linspace(0, len(window)-1, num_points)
-    # Interpolate the window
-    f_cubic = interpolate.interp1d(x_coordinates, window, kind='cubic')
-    interpolated_windows[f"corr{r2}_{r1}"] = f_cubic(fineSamples)
-    peaks = findLocalMaxima(interpolated_windows[f"corr{r2}_{r1}"])
-    local_peaks[f"corr{r2}_{r1}"] = peaks
-    major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r2}_{r1}"])
-    major_peaks[f"corr{r2}_{r1}"] = major_peak[0][0]
+        #Device 2 PRBS 1
+        window = numpy.copy(correlations_copy[f"corr{r2}"])
+        window = window[valid_peak_positions[f"corr{r2}"][(r1*3)-2]-int(window_size/2):valid_peak_positions[f"corr{r2}"][(r1*3)-2]+int(window_size/2)]
+        window = window / numpy.max(numpy.abs(window))
+        windows[f"corr{r2}_{r1}"] =  numpy.copy(window)
+        ## Interpolated Spline
+        min_val = np.min(windows[f"corr{r2}_{r1}"])
+        max_val = np.max(windows[f"corr{r2}_{r1}"])
+        # Get the number of elements in samples
+        original_length = len(windows[f"corr{r2}_{r1}"])
+        x_coordinates = np.arange(len(window))
+        # Calculate the desired number of points for the new array
+        num_points = original_length * 10
+        # Create the new array using np.linspace
+        fineSamples = np.linspace(0, len(window)-1, num_points)
+        # Interpolate the window
+        f_cubic = interpolate.interp1d(x_coordinates, window, kind='cubic')
+        interpolated_windows[f"corr{r2}_{r1}"] = f_cubic(fineSamples)
+        peaks = findLocalMaxima(interpolated_windows[f"corr{r2}_{r1}"])
+        local_peaks[f"corr{r2}_{r1}"] = peaks
+        major_peak = find_first_major_peak_dynamic_threshold(fineSamples,interpolated_windows[f"corr{r2}_{r1}"])
+        major_peaks[f"corr{r2}_{r1}"] = major_peak[0][0]
 
-    delta1 = numpy.abs((major_peaks[f"corr{r1}_{r1}"]+valid_peak_positions[f"corr{r1}"][(r1*3)-2]-int(window_size/2)-sm_lag)-(major_peaks[f"corr{r1}_{r2}"]+valid_peak_positions[f"corr{r1}"][(r2*3)-2]-int(window_size/2)))
-    delta2 = numpy.abs((major_peaks[f"corr{r2}_{r1}"]+valid_peak_positions[f"corr{r2}"][(r1*3)-2]-int(window_size/2))-(major_peaks[f"corr{r2}_{r2}"]+valid_peak_positions[f"corr{r2}"][(r2*3)-2]-int(window_size/2)-sm_lag))
-    lags[f"lag_{r1}_{r2}"] = numpy.abs(delta1 - delta2)
-    distances[f"distance_{r1}_{r2}"] = (lags[f"lag_{r1}_{r2}"]/2)*(1/48)*343
-    localpeaks[f"peak_{r1}_{r1}"]=(major_peaks[f"corr{r1}_{r1}"]+valid_peak_positions[f"corr{r1}"][(r1*3)-2]-int(window_size/2)-sm_lag)
-    localpeaks[f"peak_{r1}_{r2}"]=(major_peaks[f"corr{r1}_{r2}"]+valid_peak_positions[f"corr{r1}"][(r2*3)-2]-int(window_size/2))
-    localpeaks[f"peak_{r2}_{r1}"]=(major_peaks[f"corr{r2}_{r1}"]+valid_peak_positions[f"corr{r2}"][(r1*3)-2]-int(window_size/2))
-    localpeaks[f"peak_{r2}_{r2}"]=(major_peaks[f"corr{r2}_{r2}"]+valid_peak_positions[f"corr{r2}"][(r2*3)-2]-int(window_size/2)-sm_lag)
-    
-    global_peaks[f"g_peak_{r1}_{r1}"]=localpeaks[f"peak_{r1}_{r1}"]
-    global_peaks[f"g_peak_{r2}_{r1}"]=localpeaks[f"peak_{r1}_{r1}"]+(lags[f"lag_{r1}_{r2}"]/2)
-    global_peaks[f"g_peak_{r1}_{r2}"]=localpeaks[f"peak_{r2}_{r2}"]+(lags[f"lag_{r1}_{r2}"]/2)
-    global_peaks[f"g_peak_{r2}_{r2}"]=localpeaks[f"peak_{r2}_{r2}"]
+        delta1 = numpy.abs((major_peaks[f"corr{r1}_{r1}"]+valid_peak_positions[f"corr{r1}"][(r1*3)-2]-int(window_size/2)-sm_lag)-(major_peaks[f"corr{r1}_{r2}"]+valid_peak_positions[f"corr{r1}"][(r2*3)-2]-int(window_size/2)))
+        delta2 = numpy.abs((major_peaks[f"corr{r2}_{r1}"]+valid_peak_positions[f"corr{r2}"][(r1*3)-2]-int(window_size/2))-(major_peaks[f"corr{r2}_{r2}"]+valid_peak_positions[f"corr{r2}"][(r2*3)-2]-int(window_size/2)-sm_lag))
+        lags[f"lag_{r1}_{r2}"] = numpy.abs(delta1 - delta2)
+        distances[f"distance_{r1}_{r2}"] = (lags[f"lag_{r1}_{r2}"]/2)*(1/48)*343
+        localpeaks[f"peak_{r1}_{r1}"]=(major_peaks[f"corr{r1}_{r1}"]+valid_peak_positions[f"corr{r1}"][(r1*3)-2]-int(window_size/2)-sm_lag)
+        localpeaks[f"peak_{r1}_{r2}"]=(major_peaks[f"corr{r1}_{r2}"]+valid_peak_positions[f"corr{r1}"][(r2*3)-2]-int(window_size/2))
+        localpeaks[f"peak_{r2}_{r1}"]=(major_peaks[f"corr{r2}_{r1}"]+valid_peak_positions[f"corr{r2}"][(r1*3)-2]-int(window_size/2))
+        localpeaks[f"peak_{r2}_{r2}"]=(major_peaks[f"corr{r2}_{r2}"]+valid_peak_positions[f"corr{r2}"][(r2*3)-2]-int(window_size/2)-sm_lag)
+        
+        global_peaks[f"g_peak_{r1}_{r1}"]=localpeaks[f"peak_{r1}_{r1}"]
+        global_peaks[f"g_peak_{r2}_{r1}"]=localpeaks[f"peak_{r1}_{r1}"]+(lags[f"lag_{r1}_{r2}"]/2)
+        global_peaks[f"g_peak_{r1}_{r2}"]=localpeaks[f"peak_{r2}_{r2}"]+(lags[f"lag_{r1}_{r2}"]/2)
+        global_peaks[f"g_peak_{r2}_{r2}"]=localpeaks[f"peak_{r2}_{r2}"]
 
-    shifts[f"shift_{r1}_{r2}"]=global_peaks[f"g_peak_{r1}_{r2}"]-localpeaks[f"peak_{r1}_{r2}"]
-    shifts[f"shift_{r2}_{r1}"]=global_peaks[f"g_peak_{r2}_{r1}"]-localpeaks[f"peak_{r2}_{r1}"]
+        shifts[f"shift_{r1}_{r2}"]=global_peaks[f"g_peak_{r1}_{r2}"]-localpeaks[f"peak_{r1}_{r2}"]
+        shifts[f"shift_{r2}_{r1}"]=global_peaks[f"g_peak_{r2}_{r1}"]-localpeaks[f"peak_{r2}_{r1}"]
+except Exception as e:
+    # Send error back to server
+    pass
 
 
 ## Save information to file

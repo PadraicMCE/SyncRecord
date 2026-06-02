@@ -164,6 +164,11 @@ class SocketManager(private val context: Context, private val currentInstanceCal
                 Log.d("SocketManager.Companion", "Joined room confirmation: $data")
                 currentActiveCallback?.onReceivedJoinedRoom(data)
             }
+            internalSocket?.on("customError"){args ->
+                val data = args[0] as JSONObject
+                Log.d("SocketManager.Companion", "Error message received: $data")
+                currentActiveCallback?.onReceivedErrorMessage(data)
+            }
             internalSocket?.on("DownloadReady") { args ->
                 val data = args[0] as JSONObject
                 Log.d("SocketManager.Companion", "Download ready event received: $data")

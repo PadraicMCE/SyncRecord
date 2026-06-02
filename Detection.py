@@ -277,9 +277,13 @@ peak_tolerance = 2
 ## Read Audio from arguments
 audio = {}
 recordings = {}
-for i in range(1,len(sys.argv)-2):
-    audio[f"audio{i}"] = numpy.memmap(sys.argv[i+2],dtype='int16', mode='r+')
-    recordings[f"audio{i}"] = numpy.memmap(sys.argv[i+2],dtype='int16', mode='r+')
+try:
+    for i in range(1,len(sys.argv)-2):
+        audio[f"audio{i}"] = numpy.memmap(sys.argv[i+2],dtype='int16', mode='r+')
+        recordings[f"audio{i}"] = numpy.memmap(sys.argv[i+2],dtype='int16', mode='r+')
+except Exception as e:
+    # add error handling
+    pass
 
 ## Read PRBS template
 prbs1 = open('./prbs1_template_delta.csv',newline='')
@@ -291,8 +295,12 @@ data1 = numpy.array(data1)
 
 ## Normalise amplitudes
 data1 = data1/(numpy.max(numpy.abs(data1)))
-for i in range(1,len(audio)+1):
-    audio[f"audio{i}"] = audio[f"audio{i}"] / (numpy.max(numpy.abs(audio[f"audio{1}"])))
+try:
+    for i in range(1,len(audio)+1):
+        audio[f"audio{i}"] = audio[f"audio{i}"] / (numpy.max(numpy.abs(audio[f"audio{1}"])))
+except Exception as e:
+    # add error handling
+    pass
 
 # Length of PRBS die down
 bz = 755

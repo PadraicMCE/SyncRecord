@@ -10,5 +10,6 @@ interface SocketManagerCallback {
     fun setButtonsActive()
     fun connectionErrorMessage(message: String)
     fun onDownloadReady(data: DownloadItem)
+    fun onReceivedErrorMessage(data: JSONObject)
     // REMOVE THIS LINE: fun sendInput(input: String)
 }

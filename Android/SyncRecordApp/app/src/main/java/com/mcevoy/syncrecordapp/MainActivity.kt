@@ -156,8 +156,7 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         sharedPreferences = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
         loadSettingsFromSharedPreferences()
-        //Check if access to unprocessed audio data is available on device
-        checkUnprocessedAudioSupport()
+
         // Get permissions to access the device microphone
         permissionGranted = ActivityCompat.checkSelfPermission(this, permissions[0]) == PackageManager.PERMISSION_GRANTED
         if(!permissionGranted)
@@ -175,7 +174,8 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         deviceText = findViewById(R.id.textViewDevNum)
         roomTextStatic = findViewById(R.id.textViewRoomStatic)
         devNumStatic = findViewById(R.id.textViewDevNumStatic)
-
+        //Check if access to unprocessed audio data is available on device
+        checkUnprocessedAudioSupport()
         // Initialize SocketManager with the default cloud configuration
         // This will now use the new connectToServer logic internally
         initSocketManager(currentServerType, currentSocketAddress)
@@ -283,13 +283,6 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         buttonOpenMenu.setOnClickListener {
             showPopupMenu(it)
         }
-
-        //Download audio files list
-        //setContentView(R.layout.activity_downloads)
-        //downloadFilesRecyclerView = findViewById(R.id.downloadFilesRecyclerView)
-        //downloadFilesRecyclerView.layoutManager = LinearLayoutManager(this)
-        //downloadFilesAdapter = DownloadFilesAdapter(downloadItems)
-        //downloadFilesRecyclerView.adapter = downloadFilesAdapter
     }
 
     // --- NEW: initSocketManager function ---
@@ -605,6 +598,15 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         }
     }
 
+    override fun onReceivedErrorMessage(data: JSONObject) {
+        // If an error occurs on the server.
+        // Some data might be lost.
+        val message = data.getString("message")
+        runOnUiThread {
+            debugText.text = message
+        }
+    }
+
     //Options menu
     private fun showPopupMenu(view: android.view.View) {
         val popup = PopupMenu(this, view)
@@ -649,7 +651,10 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         if (isUnprocessedAudioSupported != null && isUnprocessedAudioSupported == "true") {
             Toast.makeText(this, "Unprocessed audio access is supported.", Toast.LENGTH_LONG).show()
         } else {
-            Toast.makeText(this, "Unprocessed audio access is not supported on this device. Results might not be accurate", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Unprocessed audio access is not supported on this device. Results might not be accurate.", Toast.LENGTH_LONG).show()
+            runOnUiThread {
+                debugText.setText("Unprocessed audio access is not supported on this device. Results might not be accurate.")
+            }
         }
     }
     // Handle audio recording. A new thread grabs and forwards audio to server
@@ -812,10 +817,15 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         }
     }
 
-    override fun connectionErrorMessage(message: String)
-    {
+    override fun connectionErrorMessage(message: String) {
         runOnUiThread {
             debugText.text = message
+        }
+        // If the disconnection happens while the device is recording -> Stop recording?
+        if(isRecording) {
+            isRecording = false
+            audioRecord.stop()
+            audioRecord.release()
         }
     }
 
@@ -837,19 +847,6 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
         socketManager.disconnect()
         initSocketManager(currentServerType,currentSocketAddress)
     }
-
-    // Downloading audio files from server
-    //private fun addNewDownloadLink(fileName: String, downloadLink: String) {
-        //val newItem = DownloadItem(fileName, downloadLink)
-        //downloadFilesAdapter.addDownloadItem(newItem)
-    //}
-
-    // Socket.IO code to handle receiving new download links
-    //private fun onDownloadLinkReceived(fileName: String, downloadLink: String) {
-        //runOnUiThread {
-            //addNewDownloadLink(fileName, downloadLink)
-        //}
-    //}
 
     private fun playBinaryAudio(onCompletion: () -> Unit) {
         val sampleRate = 48000;
@@ -1008,32 +1005,6 @@ class MainActivity : AppCompatActivity(), SocketManagerCallback, SettingsDialogF
             Log.e("Download", "Failed to start download", e)
         }
     }
-
-    /*
-    // Function for downloading the file to the phone downloads folder
-    private fun downloadFile(url: String, fileName: String) {
-        try {
-            val request = DownloadManager.Request(Uri.parse(url))
-                .setTitle(fileName) // Title for the notification
-                .setDescription("Downloading sync file") // Description for the notification
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-                .setAllowedOverMetered(true) // Allow download over cellular data
-                .setAllowedOverRoaming(true)
-            val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            downloadManager.enqueue(request) // Enqueue the download
-            runOnUiThread {
-                Toast.makeText(this, "Download started for $fileName", Toast.LENGTH_LONG).show()
-            }
-            Log.d("Download", "Download enqueued for URL: $url")
-        } catch (e: Exception) {
-            runOnUiThread {
-                Toast.makeText(this, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-            Log.e("Download", "Failed to start download", e)
-        }
-    }
-     */
 
     // Loading persistent option settings
     private fun loadSettingsFromSharedPreferences() {

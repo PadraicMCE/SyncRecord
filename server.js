@@ -423,13 +423,6 @@ io.on('connection', socket => {
 				// Handle when the script finishes
 				pyshell.on('close', function () {
 					console.log('Python script finished.');
-					io.to(message.master).emit('customError', {
-						timedate: message.timedate,
-						command: 'DetectionFailed',
-						room: message.room,
-						master: message.master,
-						calibrating: message.calibrating
-					});
 					if(message.calibrating == 1)
 					{
 						// If localising mic array with no audio recording.
@@ -485,7 +478,12 @@ io.on('connection', socket => {
 				});
 				// Handle errors
 				pyshell.on('error', function (error) {
-				console.error('Python error:', error);
+					console.error('Python error:', error);
+					io.to(message.master).emit('customError', {
+						timedate: message.timedate,
+						message: `Peak detection script failed: ${error.message}`,
+                		errorDetails: error.stack
+					});
 				});
 			});
 		}
@@ -525,17 +523,16 @@ io.on('connection', socket => {
 				// Capture error messages from the Python script
 				pyshell.on('stderr', function (stderrMessage) {
 					console.error('Python stderr:', stderrMessage);
-
+					
 				});
 				// Handle errors
 				pyshell.on('error', function (error) {
 					console.error('Python error:', error);
 					io.to(message.master).emit('customError', {
 						timedate: message.timedate,
-						command: 'DetectionFailed',
-						room: message.room,
-						master: message.master,
-						calibrating: message.calibrating
+						command: 'SyncFailed',
+						message: `Synchronisation script failed: ${error.message}`,
+                		errorDetails: error.stack
 					});
 				});
 				// Handle when the script finishes

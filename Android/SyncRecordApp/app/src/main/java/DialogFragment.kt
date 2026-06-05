@@ -1,5 +1,5 @@
 // DialogFragment.kt
-package com.mcevoy.syncrecordapp
+package app.mcevoy.syncrecordapp
 
 import android.app.Dialog
 import android.os.Bundle

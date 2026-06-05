@@ -1,4 +1,4 @@
-package com.mcevoy.syncrecordapp
+package app.mcevoy.syncrecordapp
 
 import org.json.JSONObject
 

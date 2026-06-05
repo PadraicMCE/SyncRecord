@@ -1,12 +1,10 @@
 // SocketManager.kt
-package com.mcevoy.syncrecordapp
+package app.mcevoy.syncrecordapp
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Log
 import io.socket.client.IO
 import io.socket.client.Socket
-import io.socket.emitter.Emitter
 import io.socket.engineio.client.EngineIOException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -15,8 +13,6 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.net.URI
 import java.net.URISyntaxException
-
-import com.mcevoy.syncrecordapp.DownloadItem
 
 // Data class for your download items (ensure this is in DownloadItem.kt ONLY)
 // data class DownloadItem(val fileName: String, val downloadLink: String)

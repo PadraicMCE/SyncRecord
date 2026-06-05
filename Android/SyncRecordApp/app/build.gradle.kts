@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.mcevoy.syncrecordapp"
+    namespace = "app.mcevoy.syncrecordapp"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.mcevoy.syncrecordapp"
+        applicationId = "app.mcevoy.syncrecordapp"
         minSdk = 29
         targetSdk = 34
         versionCode = 1

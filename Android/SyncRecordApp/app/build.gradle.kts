@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
@@ -7,12 +10,27 @@ android {
     namespace = "app.mcevoy.syncrecordapp"
     compileSdk = 34
 
+    val keystorePropertiesFile = rootProject.file("local.properties")
+    val keystoreProperties = Properties()
+    if (keystorePropertiesFile.exists()) {
+        keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = keystoreProperties["RELEASE_STORE_FILE"]?.let { file(it) }
+            storePassword = keystoreProperties["RELEASE_STORE_PASSWORD"] as String?
+            keyAlias = keystoreProperties["RELEASE_KEY_ALIAS"] as String?
+            keyPassword = keystoreProperties["RELEASE_KEY_PASSWORD"] as String?
+        }
+    }
+
     defaultConfig {
         applicationId = "app.mcevoy.syncrecordapp"
         minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -20,6 +38,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

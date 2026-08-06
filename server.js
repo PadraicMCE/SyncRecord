@@ -835,16 +835,59 @@ function flushBufferToFile(roomId, deviceId, datestamp, devnum, clear, callback)
 }
 
 function getLocalIpAddress() {
+	
+	// Allow manual override via environment variable
+    if (process.env.SERVER_IP) {
+        return process.env.SERVER_IP;
+    }
+	
     const interfaces = os.networkInterfaces();
+
+    // Virtual adapter name patterns (cross-platform)
+    const virtualKeywords = [
+        'virtualbox', 'vmware', 'vmnet', 'docker', 'vethernet',
+        'wsl', 'hyper-v', 'vbox', 'virbr', 'bridge', 'br-',
+        'tun', 'tap', 'utun', 'ppp', 'vnic', 'parallels'
+    ];
+
+    // Common virtual adapter IP ranges
+    const virtualIpRanges = [
+        '192.168.56.', '192.168.99.',   // VirtualBox
+        '172.17.', '172.18.', '172.19.', '172.20.', // Docker
+        '172.23.',                       // WSL
+        '192.168.122.',                  // libvirt/KVM
+        '10.0.2.',                       // VirtualBox NAT
+    ];
+
+    let bestCandidate = null;
+
     for (const name of Object.keys(interfaces)) {
+        const nameLower = name.toLowerCase();
+        const isVirtualByName = virtualKeywords.some(
+            kw => nameLower.includes(kw)
+        );
+
         for (const iface of interfaces[name]) {
-            // Skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
-            if (iface.family === 'IPv4' && !iface.internal) {
+            if (iface.family !== 'IPv4' || iface.internal) continue;
+
+            const isVirtualByIp = virtualIpRanges.some(
+                range => iface.address.startsWith(range)
+            );
+            const isVirtual = isVirtualByName || isVirtualByIp;
+
+            if (!isVirtual) {
+                // Found a physical adapter — return immediately
                 return iface.address;
+            }
+
+            // Keep as fallback in case everything is virtual
+            if (!bestCandidate) {
+                bestCandidate = iface.address;
             }
         }
     }
-    return '0.0.0.0'; // Fallback
+
+    return bestCandidate || '0.0.0.0';
 }
 
 function deleteRoomFolder(roomId) {

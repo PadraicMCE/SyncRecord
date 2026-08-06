@@ -2,6 +2,8 @@
 package app.mcevoy.syncrecordapp
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -24,7 +26,7 @@ import java.net.URISyntaxException
 // Make sure it includes the onDownloadReady method
 // interface SocketManagerCallback { /* ... existing methods ... */ fun onDownloadReady(downloadItem: DownloadItem) }
 
-class SocketManager(private val context: Context, private val currentInstanceCallback: SocketManagerCallback) {
+class SocketManager(private val context: Context, private val currentInstanceCallback: SocketManagerCallback, options: IO.Options? = null, address: String? = null) {
 
     // --- Companion object manages the single underlying Socket instance and shared resources ---
     companion object {
@@ -36,6 +38,8 @@ class SocketManager(private val context: Context, private val currentInstanceCal
 
         // NEW: Private variable to store the URI the internalSocket was last connected to
         private var lastConnectedUri: String? = null
+        // NEW: Private variable to store the options used for the socket
+        private var lastOptions: IO.Options? = null
 
         // NEW: Private mutable flow for internal emission of download items
         private val _newDownloadLinks = MutableSharedFlow<DownloadItem>(extraBufferCapacity = 1)
@@ -46,7 +50,7 @@ class SocketManager(private val context: Context, private val currentInstanceCal
         private const val DEFAULT_SOCKET_ADDRESS = "https://syncrecord.eu:3000"
 
         // Static initialization method for the *single* socket connection
-        fun initializeAndConnectSocket(context: Context, callback: SocketManagerCallback? = null) {
+        fun initializeAndConnectSocket(context: Context, callback: SocketManagerCallback? = null, shouldConnect: Boolean = true, options: IO.Options? = null, address: String? = null) {
             // Update the currently active callback
             currentActiveCallback = callback
 
@@ -58,41 +62,49 @@ class SocketManager(private val context: Context, private val currentInstanceCal
                 return
             }
 
-            // Load settings from SharedPreferences
-            val sharedPref = context.applicationContext.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-            val savedSocketAddress = sharedPref.getString("socket_address", DEFAULT_SOCKET_ADDRESS) ?: DEFAULT_SOCKET_ADDRESS
+            // Prefer provided address, then lastConnectedUri, then fallback to SharedPreferences
+            var savedSocketAddress = address ?: lastConnectedUri ?: run {
+                val sharedPref = context.applicationContext.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+                sharedPref.getString("socket_address", DEFAULT_SOCKET_ADDRESS) ?: DEFAULT_SOCKET_ADDRESS
+            }
 
-            val opts = IO.Options().apply {
+            // Safety: Ensure the address has a scheme (URI.create will crash otherwise)
+            if (!savedSocketAddress.startsWith("http://") && !savedSocketAddress.startsWith("https://")) {
+                savedSocketAddress = "https://$savedSocketAddress"
+                if (savedSocketAddress.indexOf(':', 8) == -1) { // Add default port if missing and no port specified
+                    savedSocketAddress = "$savedSocketAddress:3000"
+                }
+            }
+
+            // Use provided options, or last used options, or build defaults
+            val opts = options ?: lastOptions ?: IO.Options().apply {
                 forceNew = false // Allow reuse of existing transport for same URI if available
                 reconnection = true
                 reconnectionDelay = 1000
                 reconnectionAttempts = 10
                 timeout = 5000 // Connection timeout
-                // Add this if you are using an OkHttpClient for the socket.io client
-                // val okHttpClient = OkHttpClient.Builder()
-                //     .hostnameVerifier { _, _ -> true } // For self-signed certs (DEV ONLY)
-                //     .sslSocketFactory(getUnsafeOkHttpClient().sslSocketFactory, getUnsafeOkHttpClient().trustManager as X509TrustManager) // For self-signed certs (DEV ONLY)
-                //     .build()
-                // callFactory = okHttpClient
             }
+            lastOptions = opts
 
             try {
                 val uri = URI.create(savedSocketAddress)
                 // Only create a new socket if it's null or the URI has changed
-                if (internalSocket == null || !isInternalSocketInitialized || lastConnectedUri != savedSocketAddress) { // FIX: Use lastConnectedUri for comparison
+                if (internalSocket == null || !isInternalSocketInitialized || lastConnectedUri != savedSocketAddress) {
                     internalSocket?.disconnect() // Disconnect old if URI changed
                     internalSocket?.off() // Remove old listeners
                     internalSocket = IO.socket(uri, opts)
                     initialiseSocketListeners() // Attach listeners to the new/reused socket
                     Log.d("SocketManager.Companion", "New/reused socket instance for: $savedSocketAddress")
+                    lastConnectedUri = savedSocketAddress // Store the successful URI format
                 } else {
                     Log.d("SocketManager.Companion", "Reusing existing socket instance for: $savedSocketAddress")
                 }
 
-                internalSocket?.connect()
-                lastConnectedUri = savedSocketAddress
-                currentActiveCallback?.connectionErrorMessage("") // Clear previous error messages
-                Log.d("SocketManager.Companion", "Socket connecting to: $savedSocketAddress")
+                if (shouldConnect) {
+                    internalSocket?.connect()
+                    currentActiveCallback?.connectionErrorMessage("") // Clear previous error messages
+                    Log.d("SocketManager.Companion", "Socket connecting to: $savedSocketAddress")
+                }
                 isInternalSocketInitialized = true
 
             } catch (e: URISyntaxException) {
@@ -103,7 +115,10 @@ class SocketManager(private val context: Context, private val currentInstanceCal
             } catch (e: Exception) {
                 val errorMessage = "Unexpected error initializing socket: ${e.message}"
                 Log.e("SocketManager.Companion", errorMessage, e)
-                currentActiveCallback?.connectionErrorMessage("An unexpected error occurred during connection setup.")
+                // Use a handler to ensure this reaches the UI thread if not already there
+                Handler(Looper.getMainLooper()).post {
+                    currentActiveCallback?.connectionErrorMessage("Connection setup error: ${e.localizedMessage ?: "Unknown error"}")
+                }
                 isInternalSocketInitialized = false
             }
         }
@@ -126,8 +141,12 @@ class SocketManager(private val context: Context, private val currentInstanceCal
             internalSocket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
                 val error = if (args.isNotEmpty() && args[0] is EngineIOException) args[0] as EngineIOException else null
                 val errorMessage = error?.message ?: "Unknown connection error"
-                Log.e("SocketManager.Companion", "Socket connection error: $errorMessage", error)
-                currentActiveCallback?.connectionErrorMessage("Error connecting to socket host: $errorMessage. Check the socket host address in settings.")
+                val cause = error?.cause?.message ?: "No underlying cause"
+                Log.e("SocketManager.Companion", "Socket connection error: $errorMessage (Cause: $cause)", error)
+                
+                Handler(Looper.getMainLooper()).post {
+                    currentActiveCallback?.connectionErrorMessage("Error: $errorMessage\nCause: $cause")
+                }
             }
 
             // Your existing listeners, now using currentActiveCallback
@@ -193,19 +212,23 @@ class SocketManager(private val context: Context, private val currentInstanceCal
             }
         }
 
+        // Static method to connect the shared socket
+        fun connectSharedSocket(context: Context) {
+            Log.d("SocketManager.Companion", "connectSharedSocket called.")
+            initializeAndConnectSocket(context, currentActiveCallback, shouldConnect = true)
+        }
+
         // Static method to reconnect the shared socket
-        fun reconnectSharedSocket(context: Context, newCallback: SocketManagerCallback? = null) {
+        fun reconnectSharedSocket(context: Context, newCallback: SocketManagerCallback? = null, options: IO.Options? = null) {
             disconnectSharedSocket() // Disconnect current connection
-            initializeAndConnectSocket(context, newCallback) // Re-initialize with new context/callback
+            initializeAndConnectSocket(context, newCallback, options = options) // Re-initialize with new context/callback
         }
 
         // Static method to emit events using the shared socket
         fun emit(event: String, vararg args: Any) {
-            if (internalSocket?.connected() == true) {
-                internalSocket?.emit(event, *args)
-            } else {
-                Log.w("SocketManager.Companion", "Cannot emit '$event': Shared Socket is not connected.")
-                currentActiveCallback?.connectionErrorMessage("Cannot send command, not connected to server.")
+            internalSocket?.emit(event, *args)
+            if (internalSocket?.connected() != true) {
+                Log.w("SocketManager.Companion", "Emitting '$event' while socket is not connected. It will be queued.")
             }
         }
 
@@ -217,13 +240,14 @@ class SocketManager(private val context: Context, private val currentInstanceCal
     // --- Constructor and instance methods delegate to the companion object ---
     init {
         // When a SocketManager instance is created, ensure the shared socket is initialized
-        // and register this instance's callback as the currently active one.
-        initializeAndConnectSocket(context, currentInstanceCallback)
+        // but DO NOT connect immediately.
+        initializeAndConnectSocket(context, currentInstanceCallback, shouldConnect = false, options = options, address = address)
     }
 
     // Public methods for instances of SocketManager (delegate to companion object)
+    fun connect() = connectSharedSocket(context)
     fun disconnect() = disconnectSharedSocket()
-    fun reconnect(context: Context) = reconnectSharedSocket(context, currentInstanceCallback) // Pass current instance's callback
+    fun reconnect(context: Context, options: IO.Options? = null) = reconnectSharedSocket(context, currentInstanceCallback, options) // Pass current instance's callback
     fun emit(event: String, vararg args: Any) = Companion.emit(event, *args)
     fun getSocketId(): String? = getSharedSocketId()
     fun isConnected(): Boolean = isSharedSocketConnected()
@@ -247,5 +271,9 @@ class SocketManager(private val context: Context, private val currentInstanceCal
     fun sendDeviceIds(data: JSONObject) {
         emit("deviceIds",data)
         Log.d("SocketManager", "Sent deviceIds: $data")
+    }
+    fun sendErrorMessage(data: JSONObject) {
+        emit("customError", data)
+        Log.d("SocketManager", "Sent customError: $data")
     }
 }

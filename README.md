@@ -5,6 +5,10 @@
 
 [![DOI](https://zenodo.org/badge/676993331.svg)](https://doi.org/10.5281/zenodo.20383165)
 
+[<img src="https://f-droid.org/badge/get-it-on.png"
+    alt="Get it on F-Droid"
+    height="80">](https://f-droid.org/packages/app.mcevoy.syncrecordapp)
+
 # 1. Overview
 **SyncRecord** is an open‑source Android application that turns a group of smartphones into a synchronised microphone array. 
 By transforming grouped mobile devices into ad hoc microphone arrays, SyncRecord supports distributed acoustic sensing, sound source localisation, and multi-device audio acquisition.

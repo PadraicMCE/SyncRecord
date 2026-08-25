@@ -5,6 +5,7 @@
 
 [![DOI](https://zenodo.org/badge/676993331.svg)](https://doi.org/10.5281/zenodo.20383165)
 
+Client app available through F-Droid
 [<img src="https://f-droid.org/badge/get-it-on.png"
     alt="Get it on F-Droid"
     height="80">](https://f-droid.org/packages/app.mcevoy.syncrecordapp)
@@ -95,8 +96,15 @@ You can also setup and run the server without using a Docker container. See furt
 
 ## Client
 #### Install the SyncRecord Android App
-Install the SyncRecord App .apk on the Android smartphones being used in the microphone array.
-The SyncRecord .apk file is located in the `SyncRecord/Android/` directory.
+
+Install the SyncRecord App on the Android smartphones being used in the microphone array.
+
+The Android client app can be installed through F-Droid
+[<img src="https://f-droid.org/badge/get-it-on.png"
+    alt="Get it on F-Droid"
+    height="80">](https://f-droid.org/packages/app.mcevoy.syncrecordapp)
+
+Or, a build of the SyncRecord .apk file is located in the `SyncRecord/Android/` directory of this repo.
 
 #### First-time configuration (client side)
 1. Launch the **SyncRecord** app on the device.
